@@ -118,3 +118,52 @@ export function detectButtonSeat(
   const conf = Math.max(0, Math.min(1, 1 - best.dist / maxDist));
   return { value: best.seat, conf };
 }
+
+/**
+ * D ボタンを**席ごとの決まった位置**で確かめる（さつき提案 2026-10-09: ハンドと同じく位置を固定して読む）。
+ *
+ * D ディスクは純赤（実測 R≈230, G≈0, B≈18）の丸に黄色の「D」。テーブル領域の純赤の連結成分のうち、
+ * D ディスクの大きさ・形（幅は画面幅の 1.5〜4%、縦横比 0.75〜1.4、D の字で抜けるので塗り 25〜60%）で、
+ * いずれかの席の D 位置（anchors）から 0.07 以内に落ちるものだけを数える。ちょうど 1 つならその席。
+ * 0 個・2 個以上なら null（呼び出し側は従来の金色ディスク検出に戻る）。
+ *
+ * 金色の卓（金のフェルト・月桂樹の飾り）では従来の「最大の金色ブロブ」が飾りを拾い、D を隣の席と
+ * 取り違えてポジションが丸ごとずれていた（実測: ピンク系の金卓で BR の D を BL と判定）。赤い円は
+ * ほかに無い（ハートのカード・席の赤い印・赤い枠は大きさ・形・距離で外れる）ので、こちらを優先する。
+ */
+export function redDiscSeat(img: Rgba, tableRect: Rect, anchors: readonly FracPoint[]): number | null {
+  const x0 = Math.max(0, Math.floor(tableRect.x));
+  const y0 = Math.max(0, Math.floor(tableRect.y));
+  const x1 = Math.min(img.w, Math.round(tableRect.x + tableRect.w));
+  const y1 = Math.min(img.h, Math.round(tableRect.y + tableRect.h));
+  const w = Math.max(0, x1 - x0), h = Math.max(0, y1 - y0);
+  if (w === 0 || h === 0) return null;
+  const mask = new Uint8Array(w * h);
+  for (let y = 0; y < h; y++)
+    for (let x = 0; x < w; x++) {
+      const s = ((y0 + y) * img.w + (x0 + x)) * 4;
+      const R = img.data[s]!, G = img.data[s + 1]!, B = img.data[s + 2]!;
+      mask[y * w + x] = R >= 170 && G <= 60 && B <= 70 && R - G >= 130 ? 1 : 0;
+    }
+  const seats = new Set<number>();
+  let hits = 0;
+  for (const c of connectedComponents(mask, w, h, 8)) {
+    const wf = c.w / img.w;
+    if (wf < 0.015 || wf > 0.04) continue;
+    const aspect = c.w / c.h;
+    if (aspect < 0.75 || aspect > 1.4) continue;
+    const fill = c.area / (c.w * c.h);
+    if (fill < 0.25 || fill > 0.6) continue;
+    const cx = (x0 + c.x + c.w / 2) / img.w;
+    const cy = (y0 + c.y + c.h / 2) / img.h;
+    let ni = -1, nd = Infinity;
+    for (let i = 0; i < anchors.length; i++) {
+      const d = Math.hypot(anchors[i]!.x - cx, anchors[i]!.y - cy);
+      if (d < nd) { nd = d; ni = i; }
+    }
+    if (nd > 0.07 || ni < 0) continue;
+    hits++;
+    seats.add(ni);
+  }
+  return hits === 1 && seats.size === 1 ? [...seats][0]! : null;
+}

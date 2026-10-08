@@ -6,7 +6,7 @@
 import { describe, it, expect } from 'vitest';
 import type { Rgba } from './color.js';
 import type { Rect } from './types.js';
-import { detectButtonSeat, goldDiscCenter, goldDiscCandidates, type FracPoint } from './button.js';
+import { detectButtonSeat, goldDiscCenter, goldDiscCandidates, redDiscSeat, type FracPoint } from './button.js';
 
 /** frame に金色の塗り円盤を1つ描く（cx,cy は割合, r は px）。 */
 function drawDisc(img: Rgba, cxf: number, cyf: number, r: number): void {
@@ -73,5 +73,56 @@ describe('detectButtonSeat', () => {
     // 候補は複数あり、goldDiscCenter（最大）は大装飾を指す＝最近傍選択が効いている。
     expect(goldDiscCandidates(b, full(b)).length).toBeGreaterThanOrEqual(2);
     expect(goldDiscCenter(b, full(b))!.cx).toBeCloseTo(0.55, 1);
+  });
+});
+
+describe('redDiscSeat — 席ごとの D 位置で赤い D ディスクを確かめる（さつき提案 2026-10-09）', () => {
+  const W = 1000, H = 460;
+  const ANCHORS = [
+    { x: 0.349, y: 0.276 }, { x: 0.569, y: 0.266 }, { x: 0.692, y: 0.276 },
+    { x: 0.746, y: 0.549 }, { x: 0.603, y: 0.623 }, { x: 0.285, y: 0.549 },
+  ];
+  const TABLE = { x: 50, y: 55, w: 900, h: 313 };
+  function frame(bg: [number, number, number]): Rgba {
+    const data = new Uint8ClampedArray(W * H * 4);
+    for (let i = 0; i < W * H; i++) data.set([...bg, 255], i * 4);
+    return { w: W, h: H, data };
+  }
+  /** 純赤の丸に黄色の「D」（中央を抜く）＝ D ディスク。 */
+  function disc(img: Rgba, cx: number, cy: number, r: number): void {
+    for (let y = -r; y <= r; y++)
+      for (let x = -r; x <= r; x++) {
+        const d = Math.hypot(x, y);
+        if (d > r) continue;
+        const inner = d < r * 0.65;
+        const s = ((cy + y) * W + (cx + x)) * 4;
+        img.data.set(inner ? [255, 240, 60] : [231, 0, 18], s);
+      }
+  }
+  function dot(img: Rgba, cx: number, cy: number, r: number, rgb: [number, number, number]): void {
+    for (let y = -r; y <= r; y++)
+      for (let x = -r; x <= r; x++) if (Math.hypot(x, y) <= r) img.data.set(rgb, ((cy + y) * W + (cx + x)) * 4);
+  }
+
+  it('D 位置の近くにある赤い D ディスクの席を返す（金色の卓でも）', () => {
+    const img = frame([200, 160, 40]); // 金のフェルト
+    disc(img, Math.round(0.72 * W), Math.round(0.523 * H), 12); // BR
+    expect(redDiscSeat(img, TABLE, ANCHORS)).toBe(3);
+  });
+
+  it('小さな赤い印・遠いハートは数えない', () => {
+    const img = frame([240, 220, 235]);
+    disc(img, Math.round(0.72 * W), Math.round(0.523 * H), 12);
+    dot(img, Math.round(0.19 * W), Math.round(0.28 * H), 5, [230, 0, 20]); // 席の赤い印（小さい）
+    dot(img, Math.round(0.45 * W), Math.round(0.71 * H), 13, [225, 0, 30]); // カードのハート（D 位置から遠い）
+    expect(redDiscSeat(img, TABLE, ANCHORS)).toBe(3);
+  });
+
+  it('見つからない・2 つあるときは null（従来の金色ディスク検出に戻す）', () => {
+    expect(redDiscSeat(frame([30, 90, 60]), TABLE, ANCHORS)).toBeNull();
+    const img = frame([30, 90, 60]);
+    disc(img, Math.round(0.72 * W), Math.round(0.523 * H), 12);
+    disc(img, Math.round(0.30 * W), Math.round(0.53 * H), 12);
+    expect(redDiscSeat(img, TABLE, ANCHORS)).toBeNull();
   });
 });

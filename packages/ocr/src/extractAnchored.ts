@@ -54,7 +54,7 @@ import { ANTE_BB, resolveStacklessSeats } from './anteSeatCount.js';
 import { actionZoneRect } from './anchorAction.js';
 import { readBlinds, type Blinds } from './blinds.js';
 import { readPotAnchored, type PotAnchorRegion } from './potAnchor.js';
-import { goldDiscCandidates, type FracPoint } from './button.js';
+import { goldDiscCandidates, redDiscSeat, type FracPoint } from './button.js';
 import { isActiveHand, blueFractions, pickHandActiveRule, type CardStateOptions } from './cardState.js';
 import { recognizeAmount, grayFromRgba } from './numberField.js';
 import { findCardRects, largestCardRects } from './detect.js';
@@ -490,7 +490,10 @@ export function extractAnchored(img: Rgba, templates: AnchorTemplates, opts: Anc
     if (nd > MAX_ANCHOR_DIST || ni < 0) continue;
     if (!button || c.area > button.area) button = { slot: SLOTS[ni]!, area: c.area };
   }
-  const buttonSlot = button?.slot;
+  // 席ごとの D 位置に赤い D ディスクがちょうど 1 つ見つかれば、それを優先する（金色の卓で金の飾りを
+  // D と取り違えるのを防ぐ。redDiscSeat）。見つからなければ従来の金色ディスク検出のまま。
+  const redSeat = redDiscSeat(nimg, table, BUTTON_ANCHORS);
+  const buttonSlot = redSeat !== null ? SLOTS[redSeat]! : button?.slot;
 
   // hero 手札。
   const heroHand = readHeroHand(nimg, ranks);
