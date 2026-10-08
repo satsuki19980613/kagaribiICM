@@ -1,5 +1,6 @@
 import { useRef } from 'react';
 import { GameModeSelect, type GameSel } from './GameModeSelect';
+import { Guide } from './guide/Guide';
 import { Dots, Modal } from './ui';
 
 /**
@@ -34,26 +35,16 @@ export function ReadConditionsList(): JSX.Element {
   );
 }
 
-/** ヘッダの「?」。読み取れる条件と使い方。 */
+/** ヘッダの「?」。アニメーションの使い方ガイドと、読み取れる条件。 */
 export function HelpModal(props: { onClose: () => void }): JSX.Element {
   return (
-    <Modal eyebrow="GUIDE" title="読み取れる条件" onClose={props.onClose}>
+    <Modal eyebrow="HOW TO USE" title="使い方" size="guide" onClose={props.onClose}>
+      <Guide />
+      <h3>
+        <i className="gem" />
+        読み取れる条件
+      </h3>
       <ReadConditionsList />
-      <h3>
-        <i className="gem" />
-        使い方
-      </h3>
-      <p>
-        ゲームを選んでから、自分の手番が回ってきた場面のスクリーンショットを選びます。PC ではこの画面へのドラッグ＆ドロップや、貼り付け（Ctrl / ⌘ + V）でも読み込めます。
-      </p>
-      <p>読み取った内容を確認して計算すると、結果は記録タブに自動で残ります。計算中も他の画面を使えます（同時に計算できるのは 1 件です）。</p>
-      <h3>
-        <i className="gem" />
-        ゲームの選択
-      </h3>
-      <p>
-        ゲームによって順位ごとのポイントと開始スタックが違うため、結果が変わります。スクリーンショットからは判別できないので、必ず選んでください。ランクマッチは STAGE、レジェンドマッチは解くレート（迷ったら平均）を選びます。
-      </p>
       <h3>
         <i className="gem" />
         データについて
@@ -116,7 +107,7 @@ export function IcmInput(props: {
         <span className="rt">→</span>
       </button>
       <button type="button" className="lnk" style={{ justifySelf: 'center' }} onClick={props.onHelp}>
-        読み取れる条件
+        使い方・読み取れる条件
       </button>
     </div>
   );

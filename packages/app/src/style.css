@@ -341,6 +341,62 @@ dialog:focus,dialog:focus-visible{outline:none}
 .imgv.zoom img{width:auto;max-width:none}
 @media (max-width:420px){.imgv{margin:0 -16px}}
 
+/* ===== 使い方ガイド（アニメーション） ===== */
+dialog.glass-dlg.guide{max-width:min(600px,96vw)}
+.gs{display:grid;gap:12px;margin:4px 0 6px}
+.gs-stage{position:relative;width:100%;aspect-ratio:16/11;max-height:min(400px,56dvh);overflow:hidden;border:1px solid var(--hair);background:var(--glass-lo);
+  touch-action:pan-y;-webkit-user-select:none;user-select:none}
+.gs-scene{position:absolute;inset:0}
+.gs-body{position:absolute;inset:0 0 36px 0;overflow:hidden}
+.gs-strip{position:absolute;left:0;right:0;bottom:0;height:36px;display:flex;align-items:center;justify-content:center;padding:0 10px;
+  border-top:1px solid var(--hair);background:var(--glass-lo);white-space:nowrap;overflow:hidden}
+.gs-r{display:inline-flex;align-items:baseline;gap:8px;font-size:12px;color:var(--ink-2)}
+.gs-r .eyebrow{font-size:10px}
+.gs-r b{font-family:var(--f-num);font-weight:600;font-size:16px;letter-spacing:-.02em;color:var(--ink)}
+.gs-r b.c-push{color:var(--cpu-text)}.gs-r b.c-fold{color:var(--you-text)}
+.gs-r .gem{align-self:center}
+.gs-t{font-weight:700;color:var(--ink)}
+/* 実際の画面の部品を縮小して置く（幅 340px で組む） */
+.gs-mini{position:absolute;left:50%;top:50%;width:340px;display:grid;gap:10px;transform-origin:center;pointer-events:none}
+.gs-mini .list-h:first-child{margin-top:0}
+.gs-mini .btns{margin-top:2px}
+/* 見本スクショ: 読み取る場所へ寄せ、ほかを暗くする */
+.gs-cam{position:absolute;inset:0;overflow:hidden;background:#07080B}
+.gs-cam img{position:absolute;left:0;top:0;max-width:none;transform-origin:0 0;will-change:transform;-webkit-user-drag:none}
+.gs-box{position:absolute;opacity:0;pointer-events:none;border:2px solid var(--cpu);box-shadow:0 0 0 1200px rgba(7,8,11,.45),0 0 18px rgba(254,122,71,.45)}
+.gs-flash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none}
+.gs-tap{position:absolute;z-index:5;width:30px;height:30px;margin:-15px 0 0 -15px;pointer-events:none;border:2px solid var(--you);background:var(--you-soft);
+  box-shadow:0 0 0 1px rgba(255,255,255,.5),0 6px 16px -6px rgba(0,0,0,.5)}
+.gs-sheet{position:absolute;left:0;right:0;bottom:0;z-index:4;display:grid;gap:8px;padding:10px 12px 14px;background:var(--face);
+  border-top:1px solid var(--hair-2);box-shadow:0 -12px 30px -16px rgba(0,0,0,.5)}
+.gs-ths{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+.gs-th{aspect-ratio:2000/818;background:linear-gradient(135deg,var(--hair-2),var(--hair)) center/cover}
+.gs-th.on{outline:2px solid var(--you);outline-offset:1px}
+.gs-caps{display:grid}
+.gs-cap{grid-area:1/1;visibility:hidden;opacity:0;transition:opacity .25s}
+.gs-cap.on{visibility:visible;opacity:1}
+.gs-num{font-family:var(--f-num);font-size:11px;font-weight:600;letter-spacing:.16em;color:var(--muted)}
+.gd-scroll .gs-cap h3{margin:2px 0 4px;font-size:16px}
+.gd-scroll .gs-cap p{margin:0}
+.gd-scroll .gs-cap .gs-n{margin-top:4px;font-size:12px;line-height:1.7;color:var(--muted)}
+.gs-nav{display:grid;grid-template-columns:44px minmax(0,1fr) 44px;align-items:center;gap:12px}
+.gs-btn{position:relative;width:44px;height:40px;border:1px solid var(--hair-2);background:var(--glass-hi);color:var(--ink);cursor:pointer}
+.gs-btn::before{content:"";position:absolute;left:50%;top:50%;width:9px;height:9px;border:solid currentColor;border-width:0 0 1.5px 1.5px;transform:translate(-30%,-50%) rotate(45deg)}
+.gs-btn.next::before{transform:translate(-70%,-50%) rotate(-135deg)}
+.gs-btn:disabled{opacity:.3;cursor:default}
+.gs-segs{display:flex;gap:4px}
+.gs-seg{position:relative;flex:1;height:28px;border:0;background:none;padding:0;cursor:pointer;transition:flex-grow .3s var(--ease)}
+.gs-seg::before{content:"";position:absolute;left:0;right:0;top:50%;height:3px;margin-top:-1.5px;background:var(--hair-2);transition:background .2s}
+.gs-seg.done::before{background:var(--muted)}
+.gs-seg.on{flex-grow:2.4}
+.gs-seg.on::before{background:var(--you)}
+/* スマホ（縦）: 全画面で開き、アニメーションを大きく見せる */
+@media (max-width:600px){
+  dialog.glass-dlg.guide{--gd-max:var(--app-h,100dvh);width:100vw;max-width:none;height:var(--app-h,100dvh);max-height:none;margin:0;inset:0;border:0}
+  .gs-stage{aspect-ratio:10/9}
+  dialog.glass-dlg.guide .dlg{height:100%;padding:env(safe-area-inset-top,0px) env(safe-area-inset-right,0px) var(--sab) env(safe-area-inset-left,0px)}
+}
+
 /* ===== トースト ===== */
 .toast{position:fixed;left:50%;bottom:calc(var(--sab) + 28px);transform:translate(-50%,0);z-index:80;max-width:min(92vw,440px);width:max-content;
   display:flex;align-items:center;gap:14px;padding:10px 10px 10px 16px;color:var(--ink);font-weight:700;font-size:13px;cursor:pointer;

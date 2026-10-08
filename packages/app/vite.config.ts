@@ -15,7 +15,7 @@ export default defineConfig({
       manifest: {
         id: './',
         name: 'Kagaribi ICM',
-        short_name: 'Kagaribi',
+        short_name: 'Kagaribi ICM',
         description: 'ポーカーチェイスのスクショから push/fold ICM を計算（端末内で完結）',
         lang: 'ja',
         theme_color: '#0D0F13',
@@ -30,7 +30,7 @@ export default defineConfig({
         ],
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,bin,json,svg,png}'],
+        globPatterns: ['**/*.{js,css,html,bin,json,svg,png,webp}'],
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
         cleanupOutdatedCaches: true,
         clientsClaim: true,

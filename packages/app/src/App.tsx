@@ -519,7 +519,7 @@ export function App(): JSX.Element {
           </button>
         </nav>
         <div className="top-r">
-          <button type="button" className="hbtn" aria-label="読み取れる条件と使い方" onClick={() => setHelpOpen(true)}>
+          <button type="button" className="hbtn" aria-label="使い方と読み取れる条件" onClick={() => setHelpOpen(true)}>
             <span className="q">?</span>
           </button>
           <button type="button" className="theme-toggle" aria-label="表示テーマを切り替える" onClick={toggleTheme}>

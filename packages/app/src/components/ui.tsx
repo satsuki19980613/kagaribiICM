@@ -75,7 +75,7 @@ export function Modal(props: {
   eyebrow: string;
   title: string;
   onClose: () => void;
-  size?: 'sm' | 'wide';
+  size?: 'sm' | 'wide' | 'guide';
   /** 見出し下の操作（元画像ボタン等）。 */
   headActions?: ReactNode;
   foot?: ReactNode;
