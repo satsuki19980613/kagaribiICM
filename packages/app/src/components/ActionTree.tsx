@@ -82,7 +82,7 @@ export function ActionTree(props: { result: SolveResultDto; stacks: Record<strin
             {state.active === heroIdx && (
               <span>
                 <i style={{ boxShadow: 'inset 0 0 0 2px var(--you)' }} />
-                自分の手
+                HERO のハンド
               </span>
             )}
           </div>

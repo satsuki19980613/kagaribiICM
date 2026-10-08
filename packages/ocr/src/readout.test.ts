@@ -229,9 +229,9 @@ describe('buildReadout — issues / issueCodes / lowConfidenceFields / chipCheck
 
   it('issues を渡すと issueCodes に分類結果が入る（メッセージ生成箇所は経由しない）', () => {
     const r = buildReadout(base, {
-      issues: ['プリフロップの画面ではありません（検出: flop）。押し引きはプリフロップのみ対象です'],
+      issues: ['プリフロップの画面ではありません（検出: flop）。プッシュ/フォールドはプリフロップのみ対象です'],
     });
-    expect(r.issues).toEqual(['プリフロップの画面ではありません（検出: flop）。押し引きはプリフロップのみ対象です']);
+    expect(r.issues).toEqual(['プリフロップの画面ではありません（検出: flop）。プッシュ/フォールドはプリフロップのみ対象です']);
     expect(r.issueCodes).toEqual(['street_not_preflop']);
   });
 
@@ -286,7 +286,7 @@ describe('buildReadout — 純関数（reads を破壊しない）', () => {
       seats: [{ id: 'SB', hero: true, stack: 14.5, bet: 0.5 }],
     });
     expect(() =>
-      buildReadout(reads, { issues: ['プリフロップの画面ではありません（検出: flop）。押し引きはプリフロップのみ対象です'] }),
+      buildReadout(reads, { issues: ['プリフロップの画面ではありません（検出: flop）。プッシュ/フォールドはプリフロップのみ対象です'] }),
     ).not.toThrow();
   });
 });

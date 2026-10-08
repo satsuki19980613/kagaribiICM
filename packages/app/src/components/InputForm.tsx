@@ -70,7 +70,7 @@ export function InputForm(props: {
           <label className="lbl" htmlFor="f-as">ANTE</label>
           <select id="f-as" className="tin" value={form.anteScheme} onChange={(e) => set({ anteScheme: e.target.value as AnteScheme })}>
             <option value="none">なし</option>
-            <option value="all">全員払い (all)</option>
+            <option value="all">全員アンティ (all)</option>
             <option value="bb">BB アンティ (bb)</option>
           </select>
         </div>

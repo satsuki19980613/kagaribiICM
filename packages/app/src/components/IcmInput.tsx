@@ -17,7 +17,7 @@ export const READ_CONDITIONS: { title: string; hint: string }[] = [
   },
   { title: '自分の判断がある場面', hint: '全員フォールドで BB に手番が回ったウォークは対象外です' },
   { title: '切り抜いていない全画面のスクショ', hint: '一部を切り抜くとスタックやポジションが読み取れません' },
-  { title: 'Sit & Go の局面', hint: 'ブラインド構造が公式のもの（通常／ゆっくり／もっとゆっくり）である必要があります' },
+  { title: 'Sit & Go の局面', hint: 'ブラインドストラクチャーが公式のもの（通常／ゆっくり／もっとゆっくり）である必要があります' },
 ];
 
 export function ReadConditionsList(): JSX.Element {

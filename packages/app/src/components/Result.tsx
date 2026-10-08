@@ -178,7 +178,7 @@ export function Result(props: {
           </div>
         </div>
         {!result.converged && (
-          <div className="notice warn">収束が不十分です。境界のハンドの押し引きは目安として扱ってください。</div>
+          <div className="notice warn">収束が不十分です。ボーダー付近のハンドのプッシュ/フォールドは目安として扱ってください。</div>
         )}
       </div>
 

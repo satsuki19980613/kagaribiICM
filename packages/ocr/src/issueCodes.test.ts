@@ -10,7 +10,7 @@ describe('classifyIssueCode — 既存の実メッセージ文字列を期待コ
 
   it('gate.ts: プリフロップ以外', () => {
     expect(
-      classifyIssueCode('プリフロップの画面ではありません（検出: flop）。押し引きはプリフロップのみ対象です'),
+      classifyIssueCode('プリフロップの画面ではありません（検出: flop）。プッシュ/フォールドはプリフロップのみ対象です'),
     ).toBe('street_not_preflop');
   });
 

@@ -45,6 +45,6 @@ export function streetGate(read: Read<string>): GateResult {
   return {
     ok: false,
     street,
-    issues: [`プリフロップの画面ではありません（検出: ${street}）。押し引きはプリフロップのみ対象です`],
+    issues: [`プリフロップの画面ではありません（検出: ${street}）。プッシュ/フォールドはプリフロップのみ対象です`],
   };
 }
