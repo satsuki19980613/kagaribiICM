@@ -73,6 +73,9 @@ export const ALL_CLUB_MATCH_LEVELS: readonly BlindLevel[] = [
   ...CLUB_MATCH_LEVELS_VERY_SLOW,
 ];
 
+/** 全構造で最小の BB（最初のレベル）。 */
+const MIN_TABLE_BB = Math.min(...ALL_CLUB_MATCH_LEVELS.map((l) => l.bb));
+
 /**
  * 読み取り BB（チップ）を公式表（3 スピード）へ**タイトに**スナップする。相対距離が gate（既定 2%）
  * 以内のレベルがあれば返す。無ければ null（＝表に無い構造＝読み値採用）。
@@ -121,16 +124,29 @@ export function snapByBb(bbChips: number, gate = 0.02, anteChips = NaN): BlindLe
  * とき（欠測）に限る。
  */
 export function resolveBlindChips(sbChips: number, bbChips: number, anteChips: number, tightGate = 0.02): ResolvedBlinds | null {
+  const exact = (lv: BlindLevel): ResolvedBlinds => ({ sb: lv.sb, bb: lv.bb, ante: lv.ante, level: lv.level, speed: lv.speed });
+  // SB とアンティが同じレベルを指していれば、BB の読みに頼らずそのレベルと判断できる（さつき提案
+  // 2026-10-08: SB・BB・アンティの 3 つを表と照合する）。2 つの独立した読みが一致したときだけ採り、
+  // 1 つだけでは決めない（実測: ピンク系の卓で「820」が 6020 と読め、表の SB 6000 に偶然一致した）。
+  const agreed = levelBySbAndAnte(sbChips, anteChips, tightGate);
+
   const bbRead = Number.isFinite(bbChips) && bbChips > 0;
-  if (bbRead && bbChips > CLUB_MATCH_TOTAL_CHIPS) return null; // ヘッダ誤読
+  // 総チップを超える BB・最初のレベル（BB 200）より小さい BB はヘッダの誤読。どの構造も BB 200 から
+  // 始まり下がらない。実測: ピンク系の卓で「820/1640」が SB 6020 / BB 16 と読め、総 BB の理論値が
+  // 5,625 BB になって「クラブマッチではない」と誤って棄却していた。壊れた BB は使わず、SB と
+  // アンティが一致したときだけそのレベルにする（無ければ null＝チェック無効の安全側）。
+  if (bbRead && (bbChips > CLUB_MATCH_TOTAL_CHIPS || bbChips < MIN_TABLE_BB * (1 - tightGate))) {
+    return agreed ? exact(agreed) : null;
+  }
+  if (!bbRead && agreed) return exact(agreed);
   const sbRescue = Number.isFinite(sbChips) && sbChips > 0 && sbChips * 2 <= CLUB_MATCH_TOTAL_CHIPS;
   const bbGuess = bbRead ? bbChips : sbRescue ? sbChips * 2 : NaN;
   if (!Number.isFinite(bbGuess)) return null;
 
   const matched = snapByBb(bbGuess, tightGate, anteChips);
-  if (matched) {
-    return { sb: matched.sb, bb: matched.bb, ante: matched.ante, level: matched.level, speed: matched.speed };
-  }
+  if (matched) return exact(matched);
+  // BB が表に無くても、SB とアンティが揃って表のレベルを指すなら BB の誤読（例 1640 → 1840）。
+  if (agreed) return exact(agreed);
 
   // 別スピード: 読み値採用。SB=BB/2 を強制、アンティは妥当域なら読み値・外れれば 0.25×BB。
   const bb = Math.round(bbGuess);
@@ -138,6 +154,20 @@ export function resolveBlindChips(sbChips: number, bbChips: number, anteChips: n
   const antePlausible = Number.isFinite(anteChips) && anteChips >= 0.15 * bb && anteChips <= 0.35 * bb;
   const ante = antePlausible ? Math.round(anteChips) : Math.round(0.25 * bb);
   return { sb, bb, ante, level: 0 };
+}
+
+/** SB とアンティがどちらも gate 以内で一致するレベル（複数あれば相対誤差の和が最小のもの）。 */
+function levelBySbAndAnte(sbChips: number, anteChips: number, gate: number): BlindLevel | null {
+  if (!(Number.isFinite(sbChips) && sbChips > 0 && Number.isFinite(anteChips) && anteChips > 0)) return null;
+  let best: BlindLevel | null = null;
+  let bestScore = Infinity;
+  for (const lv of ALL_CLUB_MATCH_LEVELS) {
+    const dSb = Math.abs(lv.sb - sbChips) / lv.sb;
+    const dAnte = Math.abs(lv.ante - anteChips) / lv.ante;
+    if (dSb > gate || dAnte > gate) continue;
+    if (dSb + dAnte < bestScore) { bestScore = dSb + dAnte; best = lv; }
+  }
+  return best;
 }
 
 /**

@@ -120,7 +120,7 @@ export function runOcrPipeline(reads: RawReads, opts: OcrPipelineOptions = {}): 
   reads = cReads;
   const chipCheckReadout = chipCheckForReadout(chipCheck);
 
-  const recon = reconstructSpot(reads);
+  const recon = reconstructSpot(reads, { potRead: potAsRead.value });
   if (!recon.ok || !recon.state || !recon.facts) {
     // 対象外棄却（レイズ/リンプ/ウォーク）ではポジション導出は成功しているので、
     // facts があれば pos を照合ビューに載せる（席 ID より読み手に伝わる）。

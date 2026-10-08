@@ -378,6 +378,9 @@ export function readAmountBbAnchored(
     for (let k = i - 1; k >= 0; k--) {
       const g = labeled[k]!;
       if (ref - (g.c.x + g.c.w) > 1.2 * gh) break; // 大きな隙間＝数値の左端（バッジまでは届かない）
+      // B と同じ高さの帯に掛からない成分（ベット下の "SB" バッジ・上の飾り片等）は数値の一部ではない。
+      // 打ち切らずに飛ばす（打ち切ると "0.5" の "0" まで届かず "5" と読む。実測: ピンク系の卓の SB ベット）。
+      if (g.c.y + g.c.h <= bbBottom - gh || g.c.y >= bbBottom) continue;
       // 背の低い成分（小数点候補・NCC で数字ラベルに化けても桁ではない）はスキップして左へ継続。
       if (g.c.h < 0.6 * gh) { ref = g.c.x; continue; }
       if (!isDigit(g.label)) break; // 背の高い非数字（隣の B 等）で打ち切り

@@ -146,12 +146,26 @@ describe('blindLevels', () => {
     // 装飾テーマ卓でヘッダの 280/560 が SB 3 / BB 8,828,054 と読まれた実測値。BB を採用すると総 BB の
     // 理論値が 0.01 BB、SB×2 で救済すると BB 6 → 15,000 BB になり、どちらも誤って棄却される。
     expect(resolveBlindChips(3, 8828054, NaN)).toBeNull();
-    // BB が壊れているときは、SB がもっともらしく見えても救済しない（同じヘッダの誤読）。
-    expect(resolveBlindChips(280, 8828054, 140)).toBeNull();
+    // BB が壊れているときは、SB だけがもっともらしく見えても救済しない（同じヘッダの誤読）。
+    expect(resolveBlindChips(280, 8828054, NaN)).toBeNull();
+    // ただし SB とアンティが揃って同じレベルを指すなら、そのレベルと判断する（さつき提案 2026-10-08）。
+    expect(resolveBlindChips(280, 8828054, 140)).toMatchObject({ sb: 280, bb: 560, ante: 140 });
     // BB が**読めなかった**ときの SB×2 救済は従来どおり。
     expect(resolveBlindChips(280, NaN, 140)!.bb).toBe(560);
     // 公式表の最大 BB（60,000）は落とさない。
     expect(resolveBlindChips(30000, 60000, 15000)).not.toBeNull();
+  });
+
+  it('resolveBlindChips: 最初のレベル（BB 200）より小さい BB もヘッダ誤読として null', () => {
+    // ピンク系の卓でヘッダの 820/1640 が SB 6020 / BB 16 と読まれた実測値。総 BB の理論値が 5,625 BB に
+    // なり「クラブマッチではない」と誤って棄却していた。
+    expect(resolveBlindChips(6020, 16, 4)).toBeNull();
+    // SB の読み 1 つが表に偶然一致しても（6020 ≒ SB 6000）、アンティが合わなければ決めない。
+    expect(resolveBlindChips(6020, 16, NaN)).toBeNull();
+    // BB が表に無くても、SB とアンティが揃えばそのレベル（1640 を 1840 と読み違えた想定）。
+    expect(resolveBlindChips(820, 1840, 410)).toMatchObject({ sb: 820, bb: 1640, ante: 410 });
+    // 公式表の最小 BB（200）は落とさない。
+    expect(resolveBlindChips(100, 200, 50)).not.toBeNull();
   });
 
   it('anteBbOf: 各レベルのアンティは概ね 0.25×BB', () => {

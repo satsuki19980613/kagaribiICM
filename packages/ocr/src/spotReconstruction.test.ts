@@ -85,4 +85,20 @@ describe('reconstructSpot — 場に出したチップ', () => {
     expect(r.ok).toBe(false);
     expect(r.issues.join()).toMatch(/未分類のベット/);
   });
+
+  it('ポットがアンティ＋ブラインドだけと一致するなら、ブラインドを超えるベット読みは誤読として通す', () => {
+    // 実測: SB の「0.5 BB」を 5 と読んだ。ポット 2.8 = 5 人 × 0.25 + 0.5 + 1 なので超過チップは無い。
+    const misreadSb = base.map((s) => (s.id === 'TL' ? { ...s, bet: 5 } : s));
+    const r = reconstructSpot(reads(2.8, misreadSb));
+    expect(r.ok).toBe(true);
+    expect(stackOf(r, 'SB')).toBeCloseTo(44.3, 6);
+  });
+
+  it('ポットの判定には、総チップ保存チェックで置き換える前の読んだポットを使う', () => {
+    const raised = base.map((s) => (s.id === 'BR' ? { ...s, bet: 3 } : s));
+    // reads.pot が計算値 2.8 に置き換わっていても、画面のポット 5.8 で判定する（弾く）。
+    const r = reconstructSpot(reads(2.8, raised), { potRead: 5.8 });
+    expect(r.ok).toBe(false);
+    expect(r.issues.join()).toMatch(/未分類のベット/);
+  });
 });

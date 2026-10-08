@@ -58,7 +58,11 @@ export interface SeatFacts {
  *
  * ベット額はラベルと矛盾する場合の補助チェックに使う（ラベルが主）。
  */
-export function detectOutOfScope(facts: readonly SeatFacts[], heroPos: Position): string[] {
+export function detectOutOfScope(
+  facts: readonly SeatFacts[],
+  heroPos: Position,
+  ctx: { readonly potBlindsOnly?: boolean } = {},
+): string[] {
   const issues: string[] = [];
   const anyAllin = facts.some((f) => f.action === 'allin');
 
@@ -69,8 +73,10 @@ export function detectOutOfScope(facts: readonly SeatFacts[], heroPos: Position)
       issues.push(`${f.pos} がコール（リンプ/非オールインへのコール）しています（push/fold では扱えません）`);
     } else if (f.action === 'none' && !f.folded) {
       // ラベルが無いのにベットが blind を超える＝読み落とし or 非対応アクション
+      // ただしポットが「アンティ＋ブラインドだけ」と一致するなら、ブラインド以外のチップは場に無い
+      // ＝このベット読みが誤読（potShowsBlindsOnly）。root はブラインド額で復元するので弾かない。
       const voluntary = f.screenBet - f.blindOb;
-      if (voluntary > EPS) {
+      if (voluntary > EPS && !ctx.potBlindsOnly) {
         issues.push(`${f.pos} に未分類のベット ${voluntary.toFixed(2)}bb があります（要手入力確認）`);
       }
     }
@@ -82,6 +88,28 @@ export function detectOutOfScope(facts: readonly SeatFacts[], heroPos: Position)
   }
 
   return issues;
+}
+
+/**
+ * 読んだポットが「アンティ＋SB＋BB」だけと一致するか（＝ブラインド以外に誰もチップを出していない）。
+ *
+ * ポットは中央の大きな表示で安定して読めるので、席前の小さなベット表示より信頼できる。一致するなら、
+ * 行動マークの無い席のベット読みがブラインドを超えていても誤読と判断できる（さつき指摘 2026-10-08。
+ * 実測: ピンク系の卓で SB の「0.5 BB」を 5 と読んだが、ポット 2.8 = 5 人 × 0.25 + 0.5 + 1 で超過は無い）。
+ * ポットは 0.1 BB 単位の表示なので、丸めとアンティの微変動（例 170/660）を人数に応じて許す。
+ */
+export function potShowsBlindsOnly(
+  pot: number,
+  players: number,
+  ante: RawReads['ante'],
+  sb: number,
+  bb: number,
+): boolean {
+  if (!Number.isFinite(pot) || pot <= 0) return false;
+  const a = ante.scheme === 'none' ? 0 : ante.amount.value;
+  if (!Number.isFinite(a) || !Number.isFinite(sb) || !Number.isFinite(bb)) return false;
+  const anteTotal = ante.scheme === 'all' ? players * a : a; // 'bb' は BB だけが払う
+  return Math.abs(pot - (anteTotal + sb + bb)) <= 0.06 + 0.02 * players;
 }
 
 export interface ReconstructResult {
@@ -97,7 +125,11 @@ export interface ReconstructResult {
  * RawReads → root BoardState 復元 ＋ 対象外検出。
  * zod 検証は呼び出し側（pipeline / core.parseBoardState）で行う。
  */
-export function reconstructSpot(reads: RawReads): ReconstructResult {
+export function reconstructSpot(
+  reads: RawReads,
+  /** potRead: 画面から読んだポット（総チップ保存チェックで計算値に置き換える前の値）。既定は reads.pot。 */
+  opts: { readonly potRead?: number } = {},
+): ReconstructResult {
   const issues: string[] = [];
   const sb = reads.blinds.sb.value;
   const bb = reads.blinds.bb.value;
@@ -159,7 +191,8 @@ export function reconstructSpot(reads: RawReads): ReconstructResult {
     });
   }
 
-  issues.push(...detectOutOfScope(facts, derived.heroPos));
+  const potBlindsOnly = potShowsBlindsOnly(opts.potRead ?? reads.pot.value, derived.playersLeft, reads.ante, sb, bb);
+  issues.push(...detectOutOfScope(facts, derived.heroPos, { potBlindsOnly }));
   // 対象外で棄却するときも facts を返す。ポジション導出自体は成功しているので、
   // 「元画像とOCR結果」の照合ビュー（SPEC §5.2.3）が席 ID ではなくポジションで並べられる。
   if (issues.length > 0) {
