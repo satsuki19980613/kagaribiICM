@@ -344,14 +344,25 @@ function cardRectFromName(nb: { cx: number; top: number; h: number }): Rect {
  *
  * 厳しい方を先に試し、2 枚揃わなければ従来の 190 へ落とす。これにより
  * 「225 では暗くて消えるフレーム」でも現行挙動が保たれる（回帰ゼロを構造で担保）。
+ *
+ * それでも 2 枚揃わないときだけ、ほぼ純白の 245 で探し直す（HERO_CARD_FALLBACK）。背景が明るい
+ * ピンク系の卓では、225 でも背景（明度 230 前後）とカードが繋がり、隣り合う 2 枚も 1 塊になって
+ * 縦横比で捨てられ、手札が空になっていた（さつき実機 IMG_1132 2622×1206 の 66）。カード面は
+ * 250 前後なので 245 で背景からも隣のカードからも切り離せる。帯も上へ少し広げる（この卓では
+ * 左のカードの上端＝ランクが帯の上で切れていた）。既存の 2 段で読めるフレームには影響しない。
  */
 const HERO_CARD_THRESHOLDS = [225, 190] as const;
+const HERO_CARD_FALLBACK = { band: { x: 0.40, y: 0.58, w: 0.22, h: 0.24 }, threshold: 245 } as const;
 
 /** hero(BC) の 2 枚を検出して heroHand を読む。 */
 function readHeroHand(img: Rgba, ranks: readonly Template[]): Read<string> {
-  const hrect = fracRect(img, HERO_CARD_BAND);
-  const g = grayFromRgba(img, hrect);
-  for (const threshold of HERO_CARD_THRESHOLDS) {
+  const passes = [
+    ...HERO_CARD_THRESHOLDS.map((threshold) => ({ band: HERO_CARD_BAND, threshold })),
+    HERO_CARD_FALLBACK,
+  ];
+  for (const { band, threshold } of passes) {
+    const hrect = fracRect(img, band);
+    const g = grayFromRgba(img, hrect);
     const found = findCardRects(g, { threshold, minAreaFrac: 0.02, closeRadius: 1 }).map((r) => ({
       x: hrect.x + r.x,
       y: hrect.y + r.y,
