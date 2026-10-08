@@ -4,8 +4,8 @@ import { GUIDE_STEPS, playStep, preloadSample } from './guideScript';
 const n2 = (i: number): string => String(i).padStart(2, '0');
 
 /**
- * 使い方ガイド（ヘルプのモーダル内）。ステップごとにアニメーションをループ再生し、
- * 前へ／次へ・区切りバー・左右スワイプ・矢印キーで移動する。
+ * 使い方ガイド（ヘルプのモーダル内）。ステップのアニメーションが終わると次のステップへ自動で進み、
+ * 最後の次は最初に戻る。前へ／次へ・区切りバー・左右スワイプ・矢印キーでも移動できる。
  */
 export function Guide(): JSX.Element {
   const [cur, setCur] = useState(0);
@@ -35,7 +35,7 @@ export function Guide(): JSX.Element {
   useEffect(() => {
     const el = stage.current;
     if (!el) return;
-    return playStep(el, cur);
+    return playStep(el, cur, () => setCur((c) => (c + 1) % GUIDE_STEPS.length));
   }, [cur, size]);
 
   useEffect(() => {

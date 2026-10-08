@@ -2,7 +2,7 @@ import { GAME_KIND_LABELS, GAME_KINDS, GAME_MODE_SPECS, MODES_BY_KIND, gameModeL
 import sampleUrl from '../../assets/guide-sample.webp';
 
 /**
- * 使い方ガイドのアニメーション。1 ステップ 1 ループで、実際の画面と同じ部品（.seg / .mbtn / .seats / .rec /
+ * 使い方ガイドのアニメーション。各ステップを 1 回ずつ順に再生し（最後の次は最初へ戻る）、実際の画面と同じ部品（.seg / .mbtn / .seats / .rec /
  * .verdict-panel）を縮小して動かす。スクショは見本画像（guide-sample.webp）を使い、読み取る場所へ
  * カメラを寄せて見せる（小さい画面でも数字が読めるように）。
  *
@@ -462,24 +462,21 @@ export const GUIDE_STEPS: GuideStep[] = [
   },
 ];
 
-/** ステップ i をループ再生する。返り値で止める。 */
-export function playStep(root: HTMLElement, i: number): () => void {
+/** ステップ i を 1 回再生し、終わったら onDone（次のステップへ進める）。返り値で止める。 */
+export function playStep(root: HTMLElement, i: number, onDone: () => void): () => void {
   const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const x = new Ctx(reduce);
   root.innerHTML = '<div class="gs-scene"><div class="gs-body"></div><div class="gs-strip" aria-hidden="true"></div></div>';
   const st: Stage = { root, scene: q(root, '.gs-scene'), body: q(root, '.gs-body'), strip: q(root, '.gs-strip') };
   void (async () => {
     try {
-      for (let n = 0; ; n++) {
-        st.body.innerHTML = '';
-        st.strip.innerHTML = '';
-        st.scene.style.opacity = '';
-        void x.anim(st.scene, [{ opacity: 0 }, { opacity: 1 }], { duration: n ? 320 : 220, easing: 'ease-out' });
-        await GUIDE_STEPS[i]!.run(x, st);
-        if (reduce) return;
-        await x.anim(st.scene, [{ opacity: 1 }, { opacity: 0 }], { duration: 280, easing: 'ease-in' });
-        st.scene.style.opacity = '0';
-      }
+      void x.anim(st.scene, [{ opacity: 0 }, { opacity: 1 }], { duration: 260, easing: 'ease-out' });
+      await GUIDE_STEPS[i]!.run(x, st);
+      // 動きを減らす設定では最後の状態で止め、自動では進めない
+      if (reduce) return;
+      await x.anim(st.scene, [{ opacity: 1 }, { opacity: 0 }], { duration: 280, easing: 'ease-in' });
+      st.scene.style.opacity = '0';
+      onDone();
     } catch (e) {
       if (e !== STOP) throw e;
     }
