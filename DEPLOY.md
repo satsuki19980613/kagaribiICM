@@ -18,13 +18,13 @@
 
    | 項目 | 値 |
    |------|-----|
-   | Project name | `kagaribi-icm` |
+   | Project name | `kagaribiicm` |
    | Build command | `npm run build` |
    | Deploy command | `npx wrangler deploy`（初期表示のまま） |
    | Protect with Cloudflare Access | OFF（ON だと閲覧にログインが要る） |
 
    Node は `.node-version`（= 22）で固定済み。
-4. **Deploy** → 1〜2 分でビルド＆デプロイされ、`https://kagaribi-icm.<サブドメイン>.workers.dev` が発行されます。
+4. **Deploy** → 1〜2 分でビルド＆デプロイされ、`https://kagaribiicm.<サブドメイン>.workers.dev` が発行されます（本番: https://kagaribiicm.wsk641.workers.dev ）。
 
 以降は **`main` に push するたび自動で再デプロイ** されます。
 
