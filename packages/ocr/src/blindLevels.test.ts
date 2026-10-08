@@ -8,6 +8,9 @@ import {
   CLUB_MATCH_TOTAL_CHIPS,
   snapByBb,
   resolveBlindChips,
+  TABLE_BB_OPTIONS,
+  blindsUnresolved,
+  withUserBlinds,
   anteBbOf,
   totalBbFromBbChips,
 } from './blindLevels.js';
@@ -179,5 +182,41 @@ describe('blindLevels', () => {
     expect(CLUB_MATCH_TOTAL_CHIPS).toBe(90000);
     expect(totalBbFromBbChips(200)).toBeCloseTo(450, 6);
     expect(totalBbFromBbChips(960)).toBeCloseTo(93.75, 6);
+  });
+});
+
+describe('ヘッダが読めないときの BB 選択（さつき決定 2026-10-08）', () => {
+  const base = {
+    street: { value: 'preflop' as const, conf: 0.8 },
+    blinds: { sb: { value: 0.5, conf: 0.8 }, bb: { value: 1, conf: 0.8 } },
+    ante: { scheme: 'all' as const, amount: { value: 0.25, conf: 0.6 } },
+    pot: { value: 2.8, conf: 0.8 },
+    heroHand: { value: '66', conf: 0.8 },
+    seats: [],
+    displayMode: 'bb' as const,
+  };
+
+  it('選択肢は 3 構造の BB を重複なく昇順に並べる', () => {
+    expect(TABLE_BB_OPTIONS[0]).toBe(200);
+    expect(TABLE_BB_OPTIONS.at(-1)).toBe(60000);
+    expect(TABLE_BB_OPTIONS).toContain(1640);
+    expect(new Set(TABLE_BB_OPTIONS).size).toBe(TABLE_BB_OPTIONS.length);
+    expect([...TABLE_BB_OPTIONS].sort((a, b) => a - b)).toEqual(TABLE_BB_OPTIONS);
+  });
+
+  it('blindChips が無い・表に無い（level 0）ときだけ未解決', () => {
+    expect(blindsUnresolved(base)).toBe(true);
+    expect(blindsUnresolved({ ...base, blindChips: { sb: 450, bb: 900, ante: 225, level: 0 } })).toBe(true);
+    expect(blindsUnresolved({ ...base, blindChips: { sb: 820, bb: 1640, ante: 410, level: 7 } })).toBe(false);
+    expect(blindsUnresolved({ ...base, displayMode: 'chips' })).toBe(false);
+  });
+
+  it('選んだ BB を表のレベルとして載せる（同じ BB の別構造は読んだアンティで選ぶ）', () => {
+    expect(withUserBlinds(base, 1640).blindChips).toMatchObject({ sb: 820, bb: 1640, ante: 410 });
+    expect(blindsUnresolved(withUserBlinds(base, 1640))).toBe(false);
+    // BB 300: ゆっくり 75 / もっとゆっくり 70。アンティ 0.25 BB（=75）に近い方。
+    expect(withUserBlinds(base, 300).blindChips?.ante).toBe(75);
+    // 表に無い BB は変えない。
+    expect(withUserBlinds(base, 1234)).toBe(base);
   });
 });

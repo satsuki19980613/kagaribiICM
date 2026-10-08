@@ -22,6 +22,7 @@
  * 生表（BB/ante の 3 構造）の正本は `@kagaribi/core` の blindStructure（移設済み）。
  */
 
+import type { RawReads } from './types.js';
 import {
   BLIND_TABLE_NORMAL as BB_ANTE,
   BLIND_TABLE_SLOW as BB_ANTE_SLOW,
@@ -190,4 +191,28 @@ export function anteBbOf(level: BlindLevel): number {
 /** 現在の BB（チップ）から場の総 BB（= 総チップ ÷ BB）を返す。クラブマッチ前提。 */
 export function totalBbFromBbChips(bbChips: number, totalChips = CLUB_MATCH_TOTAL_CHIPS): number {
   return totalChips / bbChips;
+}
+
+/** 利用者が選べる BB（チップ）の一覧。3 構造の和集合を昇順に並べたもの（ヘッダが読めないときの選択肢）。 */
+export const TABLE_BB_OPTIONS: readonly number[] = [...new Set(ALL_CLUB_MATCH_LEVELS.map((l) => l.bb))].sort((a, b) => a - b);
+
+/**
+ * ヘッダのブラインドが表と照合できなかったか（BB 表示のフレームで blindChips が無い・表に無い）。
+ * このとき総チップ保存チェック（ゲーム取り違えの警告・スタック読み違いの補正）が働かないので、
+ * 確認画面で利用者に BB を選んでもらう（さつき決定 2026-10-08）。BB 表示の計算自体はブラインドの
+ * チップ額に依存しない（SB 0.5 / BB 1 / アンティ 0.25 で確定）ので、選ばなくても計算はできる。
+ */
+export function blindsUnresolved(reads: RawReads): boolean {
+  return reads.displayMode === 'bb' && (!reads.blindChips || reads.blindChips.level === 0);
+}
+
+/**
+ * 利用者が選んだ BB（チップ）を表のレベルとして reads に載せる。同じ BB が複数の構造にある
+ * （例 300 → アンティ 75 / 70）ときは、読んだアンティ（BB 換算）に近いものを選ぶ。表に無い BB は reads のまま。
+ */
+export function withUserBlinds(reads: RawReads, bbChips: number): RawReads {
+  const anteBb = reads.ante.amount.value;
+  const lv = snapByBb(bbChips, 1e-9, Number.isFinite(anteBb) ? anteBb * bbChips : NaN);
+  if (!lv) return reads;
+  return { ...reads, blindChips: { sb: lv.sb, bb: lv.bb, ante: lv.ante, level: lv.level } };
 }

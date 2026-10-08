@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import type { BoardState, GameMode } from '@kagaribi/core';
 import { GAME_MODES, gameModeLabel } from '@kagaribi/core';
-import type { OcrReadout, RawReads } from '@kagaribi/ocr';
+import { blindsUnresolved, withUserBlinds, type OcrReadout, type RawReads } from '@kagaribi/ocr';
 import { backLayers } from './backLayers';
 import { createBackController } from './navHistory';
 import { buildBoardState, defaultForm, reconcilePositions, type BoardForm } from './formModel';
@@ -201,6 +201,34 @@ export function App(): JSX.Element {
     setOcrEdited(false);
     setScreen('confirm');
   }
+
+  /**
+   * ヘッダのブラインドが読めなかったとき、利用者が選んだ BB（チップ）で読み直す。総チップのチェックが
+   * 効くようになる。合わなければ選び直せるよう、生読み値には載せずに元のまま残す。
+   */
+  function pickBlindBb(bb: number): void {
+    if (!ocrReads) return;
+    const fromError = screen === 'error';
+    const next = withUserBlinds(ocrReads, bb);
+    const { res, state: st } = applyOcrForMode(next, gameMode, fromError);
+    const label = `${bb / 2}/${bb}`;
+    if (!res.ok || !res.form) {
+      const msg = `ブラインド ${label} として読むと、「${gameModeLabel(gameMode)}」のチップの合計と合いませんでした。SB/BB を選び直してください。`;
+      setModeNote({ ok: false, text: msg });
+      if (fromError) setIssues([msg, ...res.issues]);
+      return;
+    }
+    setOcrReads(next);
+    setModeNote({ ok: true, text: `ブラインド ${label} で確かめました。下の内容をご確認ください。` });
+    if (!fromError || !st) return;
+    if (st.playersLeft > MAX_PLAYERS) {
+      setIssues([OVER_SCOPE_MSG]);
+      return;
+    }
+    setOcrEdited(false);
+    setScreen('confirm');
+  }
+  const blindPick = ocrReads && blindsUnresolved(ocrReads) ? pickBlindBb : undefined;
 
   // ---- 入力 ----
   function setOcrImage(url: string | null): void {
@@ -560,6 +588,7 @@ export function App(): JSX.Element {
             gameSel={gameSel}
             onGameModeChange={changeGameSel}
             onReread={ocrReads ? rereadForSelectedMode : undefined}
+            onPickBb={blindPick}
             modeNote={modeNote}
             modeMismatch={modeMismatch}
             stackRecovered={stackRecovered}
@@ -580,6 +609,7 @@ export function App(): JSX.Element {
             gameSel={errFromPhoto && ocrReads ? gameSel : undefined}
             onGameModeChange={errFromPhoto && ocrReads ? changeGameSel : undefined}
             onReread={errFromPhoto && ocrReads ? rereadForSelectedMode : undefined}
+            onPickBb={errFromPhoto ? blindPick : undefined}
             modeNote={modeNote}
           />
         )}

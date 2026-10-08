@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { OcrReadout } from '@kagaribi/ocr';
+import { BlindPick } from './BlindPick';
 import { GameModeSelect, type GameSel } from './GameModeSelect';
 import { ImageModal } from './ImageModal';
 import { ReadConditionsList } from './IcmInput';
@@ -21,6 +22,8 @@ export function ErrorView(props: {
   gameSel?: GameSel;
   onGameModeChange?: (next: GameSel) => void;
   onReread?: () => void;
+  /** ヘッダのブラインドが読めなかったときだけ渡す（BB を選んで読み直す）。 */
+  onPickBb?: (bb: number) => void;
   modeNote: ModeNote;
 }): JSX.Element {
   const fromPhoto = !!props.onRetry;
@@ -61,6 +64,13 @@ export function ErrorView(props: {
             選んだゲームで読み直す
           </button>
         </div>
+      )}
+
+      {props.onPickBb && (
+        <BlindPick
+          onPick={props.onPickBb}
+          hint="画面左上のブラインド（SB/BB）を読み取れませんでした。スクショの SB/BB を選ぶと、その値で読み直します。"
+        />
       )}
 
       {fromPhoto && (

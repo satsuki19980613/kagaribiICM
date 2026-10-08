@@ -1,6 +1,7 @@
 import { formatBbDisplay, type BoardState } from '@kagaribi/core';
 import type { OcrReadout } from '@kagaribi/ocr';
 import { useState } from 'react';
+import { BlindPick } from './BlindPick';
 import { potRowView } from './confirmPot';
 import { GameModeSelect, type GameSel } from './GameModeSelect';
 import { ImageModal } from './ImageModal';
@@ -23,6 +24,8 @@ export function Confirm(props: {
   gameSel: GameSel;
   onGameModeChange: (next: GameSel) => void;
   onReread?: () => void;
+  /** ヘッダのブラインドが読めなかったときだけ渡す（BB を選んで総チップのチェックを効かせる）。 */
+  onPickBb?: (bb: number) => void;
   modeNote: ModeNote;
   modeMismatch: boolean;
   stackRecovered: boolean;
@@ -60,6 +63,7 @@ export function Confirm(props: {
           選んだゲームで読み直す
         </button>
       )}
+      {props.onPickBb && <BlindPick onPick={props.onPickBb} />}
       {props.modeMismatch && (
         <div className="notice warn">場のチップ総量が、選んだゲームの想定と食い違っています。ゲームの選択をご確認ください。</div>
       )}
