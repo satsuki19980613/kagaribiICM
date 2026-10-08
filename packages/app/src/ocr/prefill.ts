@@ -71,6 +71,11 @@ export interface OcrPrefillResult {
    * やり直さずに `reprefillForGameMode` で pipeline だけ再実行するために持ち帰る。
    */
   readonly reads?: RawReads;
+  /**
+   * 計算はできないが、ハンド以外は読めたときの手入力フォーム（ハンドだけ空）。エラー画面の
+   * 「読めた分を手で埋める」に使う。
+   */
+  readonly partialForm?: BoardForm;
 }
 
 /** ベット読みの minCh は chips プロファイルの確定値（extractFrame と同一）。 */
@@ -144,6 +149,7 @@ function packagePipeline(reads: RawReads, gameMode: GameMode, imageSize?: { w: n
   if (!res.ok || !res.state) {
     return {
       ok: false,
+      ...(res.partialState ? { partialForm: { ...boardStateToForm(res.partialState), heroHand: '' } } : {}),
       issues: res.issues,
       lowConfidenceFields: res.lowConfidenceFields,
       readout: res.readout,

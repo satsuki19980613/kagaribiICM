@@ -14,7 +14,7 @@
  */
 
 import type { BoardState, GameMode, Position } from '@kagaribi/core';
-import { checkBoardStateSemantics, gameModeLabel, parseBoardState, totalChipsOf } from '@kagaribi/core';
+import { checkBoardStateSemantics, gameModeLabel, isHandClass, parseBoardState, totalChipsOf } from '@kagaribi/core';
 import type { RawReads } from './types.js';
 import { streetGate } from './gate.js';
 import { reconstructSpot, type SeatFacts } from './spotReconstruction.js';
@@ -50,7 +50,17 @@ export interface OcrValidation {
    * gate 失敗・対象外・復元失敗を含む**全経路で必ず入る**（失敗画像こそ照合したいため）。
    */
   readonly readout: OcrReadout;
+  /**
+   * 自分のハンドだけが読めなかったときの、ハンド以外を復元した盤面（heroHand は読めた生の文字列）。
+   * 計算はできないが、ほかの項目は読めているので、手入力フォームに読めた分を入れてハンドだけ
+   * 選んでもらう（さつき報告 2026-10-08: zod の英語メッセージだけが出て先へ進めなかった）。
+   */
+  readonly partialState?: BoardState;
 }
+
+/** 自分のハンドが読めなかったときのメッセージ（issueCodes の hero_hand_unread）。 */
+export const HERO_HAND_UNREAD_ISSUE =
+  '自分のハンドを読み取れませんでした。「読めた分を手で埋める」から、ハンドだけ選んでください（ほかの項目は読み取れています）。';
 
 /** SeatFacts のマップ（Position keyed）→ 物理席 id → Position の対応表。readout の pos 反映用。 */
 function posByIdFromFacts(facts: ReadonlyMap<Position, SeatFacts>): Map<string, string> {
@@ -167,9 +177,26 @@ export function runOcrPipeline(reads: RawReads, opts: OcrPipelineOptions = {}): 
   }
 
   // core の構造・意味論検証（保険）。選んだモードは復元した盤面に載せる（以降 Worker・記録へ流れる）。
-  const parsed = parseBoardState(
-    opts.gameMode ? { ...recon.state, gameMode: opts.gameMode } : recon.state,
-  );
+  const withMode = opts.gameMode ? { ...recon.state, gameMode: opts.gameMode } : recon.state;
+  // ハンドだけ読めなかった: ほかは揃っているので、読めた分を返して手入力に回す。
+  if (!isHandClass(withMode.heroHand)) {
+    const issues = [HERO_HAND_UNREAD_ISSUE];
+    return {
+      ok: false,
+      issues,
+      lowConfidenceFields: ['heroHand'],
+      unresolvedStacks: [],
+      partialState: withMode,
+      readout: buildReadout(reads, {
+        issues,
+        posById,
+        chipCheck: chipCheckReadout,
+        potRead: potAsRead,
+        ...(threshold !== undefined ? { threshold } : {}),
+      }),
+    };
+  }
+  const parsed = parseBoardState(withMode);
   if (!parsed.ok || !parsed.value) {
     return {
       ok: false,

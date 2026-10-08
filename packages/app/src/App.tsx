@@ -167,7 +167,11 @@ export function App(): JSX.Element {
     const label = gameModeLabel(mode);
     setReadout(res.readout);
     if (!res.ok || !res.form) {
-      setModeNote({ ok: false, text: `この写真は「${label}」としては読み取れませんでした。表示中の値は切り替える前のままです。` });
+      setModeNote(
+        res.issueCodes?.includes('not_club_match')
+          ? { ok: false, text: `この写真は「${label}」としては読み取れませんでした。表示中の値は切り替える前のままです。` }
+          : { ok: false, text: `「${label}」に切り替えましたが、まだ計算できません。${res.issues[0] ?? ''}` },
+      );
       return { res };
     }
     setModeMismatch(res.chipTotals ?? null);
@@ -190,7 +194,12 @@ export function App(): JSX.Element {
     if (!ocrReads) return;
     const { res, state: next } = applyOcrForMode(ocrReads, gameMode, true);
     if (!res.ok || !res.form || !next) {
-      if (screen === 'error') setIssues([`この写真は「${gameModeLabel(gameMode)}」としては読み取れませんでした。`, ...res.issues]);
+      if (screen === 'error') {
+        if (res.partialForm) setForm(res.partialForm);
+        // ゲームのせいにするのは、チップの合計が選んだゲームと合わないときだけ（ハンドが読めない等は別の理由）。
+        const gameIssue = res.issueCodes?.includes('not_club_match');
+        setIssues(gameIssue ? [`この写真は「${gameModeLabel(gameMode)}」としては読み取れませんでした。`, ...res.issues] : res.issues);
+      }
       return;
     }
     if (next.playersLeft > MAX_PLAYERS) {
@@ -285,6 +294,8 @@ export function App(): JSX.Element {
       setReadout(res.readout);
       setImageSize(res.imageSize);
       if (!res.ok || !res.form) {
+        // ハンド以外は読めたときは、「読めた分を手で埋める」でその値が入るようにする。
+        if (res.partialForm) setForm(res.partialForm);
         setIssues(['スクリーンショットから局面を読み取れませんでした（対象はプリフロップの画面）。', ...res.issues]);
         setScreen('error');
         return;

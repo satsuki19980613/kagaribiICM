@@ -17,7 +17,8 @@ export function InputForm(props: {
   onClose: () => void;
 }): JSX.Element {
   const { form, onFormChange } = props;
-  const [showGrid, setShowGrid] = useState(false);
+  // ハンドが空（写真でハンドだけ読めなかった）なら、最初から表を開いて選んでもらう。
+  const [showGrid, setShowGrid] = useState(!props.form.heroHand);
   const [showImage, setShowImage] = useState(false);
   const positions = positionsForPlayersLeft(form.playersLeft);
   const set = (patch: Partial<BoardForm>): void => onFormChange({ ...form, ...patch });
@@ -115,7 +116,7 @@ export function InputForm(props: {
 
       <label className="lbl">HAND</label>
       <button type="button" className="handbtn" aria-expanded={showGrid} onClick={() => setShowGrid((s) => !s)}>
-        {form.heroHand}
+        {form.heroHand || 'ハンドを選んでください'}
         <span>{showGrid ? 'CLOSE ▲' : 'SELECT ▼'}</span>
       </button>
       {showGrid && (

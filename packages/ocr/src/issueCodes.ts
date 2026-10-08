@@ -59,6 +59,8 @@ const RULES: readonly Rule[] = [
   { code: 'walk', test: (m) => /ウォーク/.test(m) },
   // pipeline.ts notClubIssue: '<ゲーム名>の局面として整合しません（場のチップ合計 ...）。...'
   { code: 'not_club_match', test: (m) => /の局面として整合しません/.test(m) },
+  // pipeline.ts HERO_HAND_UNREAD_ISSUE: '自分のハンドを読み取れませんでした。...'
+  { code: 'hero_hand_unreadable', test: (m) => /自分のハンドを読み取れませんでした/.test(m) },
   // App.tsx OVER_SCOPE_MSG: '現在は${MAX_PLAYERS}人までの局面に対応しています。'
   { code: 'too_many_players', test: (m) => /人までの局面に対応/.test(m) },
   // confidence.ts のポット・チェックサム不一致（画面表示は Confirm.tsx が動的に組む数値付き文言のため、

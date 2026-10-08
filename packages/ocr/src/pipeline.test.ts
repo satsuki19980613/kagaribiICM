@@ -383,3 +383,27 @@ describe('pipeline — 同じ生読み値をゲームモードだけ変えて通
     expect(r.chipCheck?.modeDependentRecovery).toBeUndefined();
   });
 });
+
+describe('pipeline — 自分のハンドだけ読めなかった（さつき報告 2026-10-08）', () => {
+  it('計算はできないが、ハンド以外を復元した盤面を返して手入力に回す', () => {
+    const r = runOcrPipeline(
+      mkReads({
+        pot: 1.5,
+        hand: '',
+        seats: [
+          { id: 'BU', button: true, stack: 15, bet: 0 },
+          { id: 'SB', stack: 14.5, bet: 0.5 },
+          { id: 'BB', stack: 14, bet: 1 },
+          { id: 'UTG', hero: true, stack: 15, bet: 0 },
+          { id: 'CO', stack: 15, bet: 0 },
+        ],
+      }),
+    );
+    expect(r.ok).toBe(false);
+    // zod の英語メッセージ（heroHand: invalid hand-class notation）ではなく、次にすることを伝える。
+    expect(r.issues.join()).toMatch(/自分のハンドを読み取れませんでした/);
+    expect(r.readout.issueCodes).toContain('hero_hand_unreadable');
+    expect(r.partialState?.heroPos).toBe('UTG');
+    expect(r.partialState?.playersLeft).toBe(5);
+  });
+});
