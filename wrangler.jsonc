@@ -1,0 +1,11 @@
+{
+  // Cloudflare Workers 設定（静的アセットだけを配る assets-only Worker。main は持たない）。
+  // アプリは端末ローカル完結の PWA なので、ビルド済みの packages/app/dist を置くだけで動く。
+  // 静的アセットへのリクエストは Worker を起動しない＝無料枠で足りる。
+  // Workers Builds のデプロイコマンド `npx wrangler deploy` がこの設定を読む（DEPLOY.md）。
+  "name": "kagaribi-icm",
+  "compatibility_date": "2024-11-01",
+  "assets": {
+    "directory": "./packages/app/dist"
+  }
+}
