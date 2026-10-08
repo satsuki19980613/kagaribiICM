@@ -1,0 +1,27 @@
+{
+  "name": "@kagaribi/solver",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "browser": "./src/index.browser.ts",
+      "kagaribi-dist": "./dist/index.js",
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./evaluator": {
+      "types": "./src/evaluator.ts",
+      "default": "./src/evaluator.ts"
+    },
+    "./sidepot": {
+      "types": "./src/sidepot.ts",
+      "default": "./src/sidepot.ts"
+    }
+  },
+  "dependencies": {
+    "@kagaribi/core": "*"
+  }
+}

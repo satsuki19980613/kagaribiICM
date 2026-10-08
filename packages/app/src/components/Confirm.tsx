@@ -1,0 +1,168 @@
+import { formatBbDisplay, type BoardState } from '@kagaribi/core';
+import type { OcrReadout } from '@kagaribi/ocr';
+import { useState } from 'react';
+import { potRowView } from './confirmPot';
+import { GameModeSelect, type GameSel } from './GameModeSelect';
+import { ImageModal } from './ImageModal';
+import { Back, Modal, PaneHead } from './ui';
+
+export type ModeNote = { ok: boolean; text: string } | null;
+
+/**
+ * 条件確認。読み取った内容を項目別に出し、低信頼の値には CHECK を付ける。写真経由なら
+ * 検出人数をその場で直せ、ゲームを選び直して読み直せる。
+ */
+export function Confirm(props: {
+  state: BoardState;
+  lowConfidenceFields: string[];
+  imageUrl: string | null;
+  readout?: OcrReadout;
+  onBack: () => void;
+  onEdit: () => void;
+  onFixPlayers?: (n: number) => void;
+  gameSel: GameSel;
+  onGameModeChange: (next: GameSel) => void;
+  onReread?: () => void;
+  modeNote: ModeNote;
+  modeMismatch: boolean;
+  stackRecovered: boolean;
+  unresolvedStacks: string[];
+  blocked: boolean;
+  onSolve: () => void;
+}): JSX.Element {
+  const { state } = props;
+  const [showImage, setShowImage] = useState(false);
+  const [showInfo, setShowInfo] = useState(false);
+  const low = new Set(props.lowConfidenceFields);
+  const pot = potRowView(state, props.readout);
+  const stacksLow = state.seats.some((s) => low.has(`${s.pos}.stack`));
+  const fromPhoto = !!props.imageUrl;
+  const Chk = (): JSX.Element => <span className="chk">CHECK</span>;
+
+  return (
+    <div className="pane">
+      <Back label="ICM" onClick={props.onBack} />
+      <PaneHead eyebrow="CONFIRM" title="条件確認">
+        <button type="button" className="hbtn" aria-label="この画面について" onClick={() => setShowInfo(true)}>
+          <span className="q">?</span>
+        </button>
+        {fromPhoto && (
+          <button type="button" className="btn sm" onClick={() => setShowImage(true)}>
+            IMAGE
+          </button>
+        )}
+      </PaneHead>
+
+      <GameModeSelect sel={props.gameSel} onChange={props.onGameModeChange} />
+      {props.modeNote && <div className={`notice ${props.modeNote.ok ? 'ok' : 'warn'}`}>{props.modeNote.text}</div>}
+      {props.onReread && (
+        <button type="button" className="btn wide ghost" onClick={props.onReread}>
+          選んだゲームで読み直す
+        </button>
+      )}
+      {props.modeMismatch && (
+        <div className="notice warn">場のチップ総量が、選んだゲームの想定と食い違っています。ゲームの選択をご確認ください。</div>
+      )}
+      {props.unresolvedStacks.length > 0 && (
+        <div className="notice warn">
+          {props.unresolvedStacks.join('・')} のスタックが読み取れませんでした（<b>0bb</b> を仮に置いています）。「修正」から正しい値を入れてください。
+        </div>
+      )}
+      {props.stackRecovered && !props.modeMismatch && (
+        <div className="notice">読み取れなかった 1 席のスタックを、選んだゲームの総チップから割り出しました。下の STACKS でご確認ください。</div>
+      )}
+
+      {fromPhoto && props.onFixPlayers && (
+        <>
+          <div className="list-h">
+            <span className="eyebrow">PLAYERS</span>
+            <span className="rt">検出人数 {state.playersLeft}</span>
+          </div>
+          <div className="seg">
+            {[2, 3, 4, 5, 6].map((n) => (
+              <button key={n} type="button" aria-pressed={state.playersLeft === n} onClick={() => props.onFixPlayers!(n)}>
+                {n}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+
+      <div className="panel">
+        <dl className="spec">
+          <dt>BLINDS</dt>
+          <dd>
+            {state.blinds.sb} / {state.blinds.bb}
+            {state.ante.scheme !== 'none' && <>　ANTE {state.ante.amount}{state.ante.scheme === 'bb' ? ' (BB)' : ''}</>}
+          </dd>
+          <dd className="tag" />
+          <dt>HAND</dt>
+          <dd style={{ fontSize: 18 }}>{state.heroHand}</dd>
+          <dd className="tag" />
+          <dt>HERO</dt>
+          <dd>{state.heroPos}</dd>
+          <dd className="tag" />
+          <dt>PLAYERS</dt>
+          <dd>{state.playersLeft}</dd>
+          <dd className="tag">{stacksLow && <Chk />}</dd>
+          <dt>POT</dt>
+          <dd className={pot.ok ? '' : 'warn'}>{pot.text}</dd>
+          <dd className="tag" />
+        </dl>
+      </div>
+
+      <div className="list-h">
+        <span className="eyebrow">STACKS</span>
+      </div>
+      <ul className="seats">
+        {state.seats.map((s) => {
+          const hero = s.pos === state.heroPos;
+          return (
+            <li key={s.pos} className={`seat${hero ? ' hero' : ''}`}>
+              <span className={`pos${hero ? ' hero' : ''}`}>{s.pos}</span>
+              <span className={`stk${low.has(`${s.pos}.stack`) ? ' lowconf' : ''}`}>{formatBbDisplay(s.stack)}bb</span>
+              <span className={`bet${low.has(`${s.pos}.bet`) ? ' lowconf' : ''}`}>{s.bet > 0 ? `BET ${formatBbDisplay(s.bet)}` : ''}</span>
+              <span className="tgs">{hero && <span className="tg">HERO</span>}</span>
+            </li>
+          );
+        })}
+      </ul>
+
+      {props.blocked && <div className="notice warn">計算中です。完了してから計算できます。</div>}
+      <div className="btns">
+        <button type="button" className="btn ghost" onClick={props.onEdit}>
+          修正
+        </button>
+        <button type="button" className="btn primary" disabled={props.blocked} onClick={props.onSolve}>
+          計算する
+        </button>
+      </div>
+
+      {showImage && props.imageUrl && (
+        <ImageModal src={props.imageUrl} readout={props.readout} onClose={() => setShowImage(false)} />
+      )}
+      {showInfo && (
+        <Modal eyebrow="CONFIRM" title="この画面について" onClose={() => setShowInfo(false)}>
+          <h3><i className="gem" />CHECK の付いた項目</h3>
+          <p>自動読み取りの信頼度が低めの値です。下線付きの値をご確認ください。</p>
+          {fromPhoto && (
+            <>
+              <h3><i className="gem" />検出人数</h3>
+              <p>フォールドした席のスタックが読み取れないと、その席が抜けて人数が少なく出ることがあります。実際の人数と違うときは選び直すと席を補います（補った席のスタックは STACKS でご確認ください）。</p>
+            </>
+          )}
+          <h3><i className="gem" />ゲームの選択</h3>
+          <p>ゲームによって順位ごとのポイントと開始スタックが違うため、どのゲームの局面かで結果が変わります。<b>ランクマッチ</b>は STAGE ごとに開始スタックも順位ごとのポイントも違います。<b>レジェンドマッチ</b>は「シーズン」と「ベース」の 2 つのレートが動き、<b>平均</b>は両方をならしたものです（迷ったら平均）。</p>
+          {props.stackRecovered && (
+            <>
+              <h3><i className="gem c" />割り出したスタック</h3>
+              <p>1 席だけ読み取れなかったスタックを、テーブル全体のチップが一定であることから逆算しました。選んだゲームの開始スタックを前提にしているため、ゲームが違うとこの席の値が大きく変わります。</p>
+            </>
+          )}
+          <h3><i className="gem" />修正のしかた</h3>
+          <p>違っていたら「修正」から直せます。直した内容がそのまま計算に使われます。</p>
+        </Modal>
+      )}
+    </div>
+  );
+}

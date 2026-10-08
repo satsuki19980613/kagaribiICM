@@ -1,0 +1,31 @@
+{
+  "name": "kagaribi-icm",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Kagaribi ICM — ポーカーチェイスのスクショから push/fold ICM を計算するローカル Web アプリ",
+  "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "start": "npm run build && npm run preview",
+    "dev": "npm run dev -w @kagaribi/app",
+    "build": "npm run build -w @kagaribi/app",
+    "preview": "npm run preview -w @kagaribi/app",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p packages/app",
+    "icons": "node scripts/gen-icons.mjs"
+  },
+  "devDependencies": {
+    "@resvg/resvg-js": "^2.6.2",
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  },
+  "dependencies": {
+    "zod": "^3.24.1"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
