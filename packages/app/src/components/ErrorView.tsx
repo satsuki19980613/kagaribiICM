@@ -23,7 +23,9 @@ export function ErrorView(props: {
   onGameModeChange?: (next: GameSel) => void;
   onReread?: () => void;
   /** ヘッダのブラインドが読めなかったときだけ渡す（BB を選んで読み直す）。 */
-  onPickBb?: (bb: number) => void;
+  onPickBb?: (bb: number | null) => void;
+  /** 手動で設定中の BB（チップ）。 */
+  pickedBb?: number | null;
   modeNote: ModeNote;
 }): JSX.Element {
   const fromPhoto = !!props.onRetry;
@@ -56,6 +58,7 @@ export function ErrorView(props: {
 
       {props.onPickBb && (
         <BlindPick
+          value={props.pickedBb ?? null}
           onPick={props.onPickBb}
           hint="画面左上のブラインド（例: SB/BB 820/1640）を読み取れませんでした。スクショと同じ SB/BB を選ぶと、その値で読み直します。"
           skippable={false}

@@ -180,6 +180,7 @@ select.tin option{background:var(--face);color:var(--ink)}
 /* SB/BB の手動設定（ヘッダが読めなかったとき） */
 .bpick{border-left:3px solid var(--cpu);background:var(--cpu-soft);gap:8px}
 .bpick-t{font-size:15px;font-weight:700}
+.bpick.set{border-left-color:var(--you);background:var(--you-soft)}
 .gem{display:inline-block;width:8px;height:8px;transform:rotate(45deg);flex:none;background:linear-gradient(135deg,#fff,var(--you) 65%)}
 .gem.c{background:linear-gradient(135deg,#fff,var(--cpu) 65%)}
 

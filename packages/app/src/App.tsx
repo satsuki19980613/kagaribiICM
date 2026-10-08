@@ -103,6 +103,10 @@ export function App(): JSX.Element {
   const [imageSize, setImageSize] = useState<{ w: number; h: number } | undefined>(undefined);
   // OCR の生読み値。ゲームを切り替えたとき画像処理をやり直さず pipeline だけ再実行するために持つ。
   const [ocrReads, setOcrReads] = useState<RawReads | null>(null);
+  // 読み取ったままの生読み値（手動の SB/BB を載せる前）と、手動で設定した BB（チップ）。
+  // ヘッダのブラインドが読めなかった写真では、設定欄を出し続けて選び直し・取り消しができるようにする。
+  const [ocrReadsBase, setOcrReadsBase] = useState<RawReads | null>(null);
+  const [pickedBb, setPickedBb] = useState<number | null>(null);
   // 確認画面で利用者が値を手で直したか（直した後の切り替えでは値を上書きしない）。
   const [ocrEdited, setOcrEdited] = useState(false);
   const [modeMismatch, setModeMismatch] = useState<ChipMismatch>(null);
@@ -215,22 +219,26 @@ export function App(): JSX.Element {
    * ヘッダのブラインドが読めなかったとき、利用者が選んだ BB（チップ）で読み直す。総チップのチェックが
    * 効くようになる。合わなければ選び直せるよう、生読み値には載せずに元のまま残す。
    */
-  function pickBlindBb(bb: number): void {
-    if (!ocrReads) return;
+  function pickBlindBb(bb: number | null): void {
+    if (!ocrReadsBase) return;
     const fromError = screen === 'error';
-    const next = withUserBlinds(ocrReads, bb);
-    const label = `${bb / 2}/${bb}`;
+    const next = bb ? withUserBlinds(ocrReadsBase, bb) : ocrReadsBase;
+    const label = bb ? `${bb / 2}/${bb}` : '';
     // 先に試し、読み直せないときは表示中の値も警告も変えない（選び直せるよう生読み値も元のまま）。
     const trial = reprefillForGameMode(next, gameMode, imageSize);
     if (!trial.ok || !trial.form) {
-      const msg = `SB/BB ${label} では読み直せませんでした。`;
+      const msg = bb ? `SB/BB ${label} では読み直せませんでした。` : 'SB/BB の設定を外すと読み直せませんでした。';
       setModeNote({ ok: false, text: `${msg}${trial.issues[0] ? `（${trial.issues[0]}）` : ''}` });
       if (fromError) setIssues([msg, ...trial.issues]);
       return;
     }
     const { state: st } = applyOcrForMode(next, gameMode, fromError);
     setOcrReads(next);
-    setModeNote({ ok: true, text: `SB/BB ${label} で確かめました。下の内容をご確認ください。` });
+    setPickedBb(bb);
+    setModeNote({
+      ok: true,
+      text: bb ? `SB/BB ${label} で確かめました。下の内容をご確認ください。` : 'SB/BB の設定を外しました（チップの合計のチェックは行いません）。',
+    });
     if (!fromError || !st) return;
     if (st.playersLeft > MAX_PLAYERS) {
       setIssues([OVER_SCOPE_MSG]);
@@ -239,7 +247,7 @@ export function App(): JSX.Element {
     setOcrEdited(false);
     setScreen('confirm');
   }
-  const blindPick = ocrReads && blindsUnresolved(ocrReads) ? pickBlindBb : undefined;
+  const blindPick = ocrReadsBase && blindsUnresolved(ocrReadsBase) ? pickBlindBb : undefined;
 
   // ---- 入力 ----
   function setOcrImage(url: string | null): void {
@@ -254,6 +262,8 @@ export function App(): JSX.Element {
     setReadout(undefined);
     setImageSize(undefined);
     setOcrReads(null);
+    setOcrReadsBase(null);
+    setPickedBb(null);
     setOcrEdited(false);
     setModeNote(null);
     setManualOpen(true);
@@ -283,11 +293,15 @@ export function App(): JSX.Element {
     setReadout(undefined);
     setImageSize(undefined);
     setOcrReads(null);
+    setOcrReadsBase(null);
+    setPickedBb(null);
     setOcrEdited(false);
     setModeNote(null);
     try {
       const res = await prefillFromScreenshot(file, gameMode);
       setOcrReads(res.reads ?? null);
+      setOcrReadsBase(res.reads ?? null);
+      setPickedBb(null);
       setModeMismatch(res.chipTotals ?? null);
       setStackRecovered(!!res.stackRecovered);
       setUnresolvedStacks(res.unresolvedStacks ?? []);
@@ -602,6 +616,7 @@ export function App(): JSX.Element {
             onGameModeChange={changeGameSel}
             onReread={ocrReads ? rereadForSelectedMode : undefined}
             onPickBb={blindPick}
+            pickedBb={pickedBb}
             modeNote={modeNote}
             modeMismatch={modeMismatch}
             stackRecovered={stackRecovered}
@@ -623,6 +638,7 @@ export function App(): JSX.Element {
             onGameModeChange={errFromPhoto && ocrReads ? changeGameSel : undefined}
             onReread={errFromPhoto && ocrReads ? rereadForSelectedMode : undefined}
             onPickBb={errFromPhoto ? blindPick : undefined}
+            pickedBb={pickedBb}
             modeNote={modeNote}
           />
         )}

@@ -27,7 +27,9 @@ export function Confirm(props: {
   onGameModeChange: (next: GameSel) => void;
   onReread?: () => void;
   /** ヘッダのブラインドが読めなかったときだけ渡す（BB を選んで総チップのチェックを効かせる）。 */
-  onPickBb?: (bb: number) => void;
+  onPickBb?: (bb: number | null) => void;
+  /** 手動で設定中の BB（チップ）。 */
+  pickedBb?: number | null;
   modeNote: ModeNote;
   modeMismatch: ChipMismatch;
   stackRecovered: boolean;
@@ -58,7 +60,7 @@ export function Confirm(props: {
         )}
       </PaneHead>
 
-      {props.onPickBb && <BlindPick onPick={props.onPickBb} />}
+      {props.onPickBb && <BlindPick value={props.pickedBb ?? null} onPick={props.onPickBb} />}
       <GameModeSelect sel={props.gameSel} onChange={props.onGameModeChange} />
       {props.modeNote && <div className={`notice ${props.modeNote.ok ? 'ok' : 'warn'}`}>{props.modeNote.text}</div>}
       {props.onReread && (
