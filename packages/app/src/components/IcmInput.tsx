@@ -1,6 +1,6 @@
 import { useRef } from 'react';
 import { GameModeSelect, type GameSel } from './GameModeSelect';
-import { Dots, FlameMark, Modal } from './ui';
+import { Dots, Modal } from './ui';
 
 /**
  * 読み取れる条件。文言は OCR が実際に弾いている条件とそろえる
@@ -85,12 +85,6 @@ export function IcmInput(props: {
   return (
     <div className="pane">
       <input ref={fileRef} type="file" accept="image/*" hidden onChange={onPick} disabled={props.blocked} />
-
-      <h1 className="wordmark">
-        <FlameMark />
-        Kagaribi ICM
-      </h1>
-      <p className="tagline">Screenshot → ICM push / fold</p>
 
       {props.blocked && <div className="notice warn">計算中です。完了すると次の局面を読み込めます。</div>}
 
