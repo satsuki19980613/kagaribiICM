@@ -1,4 +1,4 @@
-import { formatBbDisplay, type BoardState } from '@kagaribi/core';
+import { formatBbDisplay, gameModeLabel, type BoardState } from '@kagaribi/core';
 import type { OcrReadout } from '@kagaribi/ocr';
 import { useState } from 'react';
 import { BlindPick } from './BlindPick';
@@ -8,6 +8,8 @@ import { ImageModal } from './ImageModal';
 import { Back, Modal, PaneHead } from './ui';
 
 export type ModeNote = { ok: boolean; text: string } | null;
+/** 場のチップ合計が選んだゲームと合わないときの数値（BB 換算）。合っていれば null。 */
+export type ChipMismatch = { read: number; theory: number } | null;
 
 /**
  * 条件確認。読み取った内容を項目別に出し、低信頼の値には CHECK を付ける。写真経由なら
@@ -27,7 +29,7 @@ export function Confirm(props: {
   /** ヘッダのブラインドが読めなかったときだけ渡す（BB を選んで総チップのチェックを効かせる）。 */
   onPickBb?: (bb: number) => void;
   modeNote: ModeNote;
-  modeMismatch: boolean;
+  modeMismatch: ChipMismatch;
   stackRecovered: boolean;
   unresolvedStacks: string[];
   blocked: boolean;
@@ -56,6 +58,7 @@ export function Confirm(props: {
         )}
       </PaneHead>
 
+      {props.onPickBb && <BlindPick onPick={props.onPickBb} />}
       <GameModeSelect sel={props.gameSel} onChange={props.onGameModeChange} />
       {props.modeNote && <div className={`notice ${props.modeNote.ok ? 'ok' : 'warn'}`}>{props.modeNote.text}</div>}
       {props.onReread && (
@@ -63,9 +66,11 @@ export function Confirm(props: {
           選んだゲームで読み直す
         </button>
       )}
-      {props.onPickBb && <BlindPick onPick={props.onPickBb} />}
       {props.modeMismatch && (
-        <div className="notice warn">場のチップ総量が、選んだゲームの想定と食い違っています。ゲームの選択をご確認ください。</div>
+        <div className="notice warn">
+          チップの合計が「{gameModeLabel(state.gameMode)}」と合いません。読み取ったスタックとポットの合計は <b>{props.modeMismatch.read.toFixed(1)}bb</b> ですが、このゲームなら{' '}
+          <b>{props.modeMismatch.theory.toFixed(1)}bb</b> のはずです（場のチップの合計は、開始人数 × 開始スタックで試合中ずっと変わりません）。ゲームと SB/BB の選択が合っているかご確認ください。
+        </div>
       )}
       {props.unresolvedStacks.length > 0 && (
         <div className="notice warn">

@@ -13,6 +13,7 @@ import { IDLE_JOB, canStartSolve, completeJob, createStartLatch, failJob, startJ
 import { solveInWorker } from './solverClient';
 import { Confirm, type ModeNote } from './components/Confirm';
 import { ErrorView } from './components/ErrorView';
+import type { ChipMismatch } from './components/Confirm';
 import { DEFAULT_GAME_SEL, selFromMode, selectedMode, type GameSel } from './components/GameModeSelect';
 import { HelpModal, IcmInput } from './components/IcmInput';
 import { InputForm } from './components/InputForm';
@@ -104,7 +105,7 @@ export function App(): JSX.Element {
   const [ocrReads, setOcrReads] = useState<RawReads | null>(null);
   // 確認画面で利用者が値を手で直したか（直した後の切り替えでは値を上書きしない）。
   const [ocrEdited, setOcrEdited] = useState(false);
-  const [modeMismatch, setModeMismatch] = useState(false);
+  const [modeMismatch, setModeMismatch] = useState<ChipMismatch>(null);
   const [modeNote, setModeNote] = useState<ModeNote>(null);
   const [stackRecovered, setStackRecovered] = useState(false);
   const [unresolvedStacks, setUnresolvedStacks] = useState<string[]>([]);
@@ -166,11 +167,10 @@ export function App(): JSX.Element {
     const label = gameModeLabel(mode);
     setReadout(res.readout);
     if (!res.ok || !res.form) {
-      setModeMismatch(true);
       setModeNote({ ok: false, text: `この写真は「${label}」としては読み取れませんでした。表示中の値は切り替える前のままです。` });
       return { res };
     }
-    setModeMismatch(!!res.modeMismatch);
+    setModeMismatch(res.chipTotals ?? null);
     setUnresolvedStacks(res.unresolvedStacks ?? []);
     if (ocrEdited && !force) {
       setModeNote({ ok: true, text: `「${label}」で計算します（手で直した値はそのまま使います）。` });
@@ -210,16 +210,18 @@ export function App(): JSX.Element {
     if (!ocrReads) return;
     const fromError = screen === 'error';
     const next = withUserBlinds(ocrReads, bb);
-    const { res, state: st } = applyOcrForMode(next, gameMode, fromError);
     const label = `${bb / 2}/${bb}`;
-    if (!res.ok || !res.form) {
-      const msg = `ブラインド ${label} として読むと、「${gameModeLabel(gameMode)}」のチップの合計と合いませんでした。SB/BB を選び直してください。`;
-      setModeNote({ ok: false, text: msg });
-      if (fromError) setIssues([msg, ...res.issues]);
+    // 先に試し、読み直せないときは表示中の値も警告も変えない（選び直せるよう生読み値も元のまま）。
+    const trial = reprefillForGameMode(next, gameMode, imageSize);
+    if (!trial.ok || !trial.form) {
+      const msg = `SB/BB ${label} では読み直せませんでした。`;
+      setModeNote({ ok: false, text: `${msg}${trial.issues[0] ? `（${trial.issues[0]}）` : ''}` });
+      if (fromError) setIssues([msg, ...trial.issues]);
       return;
     }
+    const { state: st } = applyOcrForMode(next, gameMode, fromError);
     setOcrReads(next);
-    setModeNote({ ok: true, text: `ブラインド ${label} で確かめました。下の内容をご確認ください。` });
+    setModeNote({ ok: true, text: `SB/BB ${label} で確かめました。下の内容をご確認ください。` });
     if (!fromError || !st) return;
     if (st.playersLeft > MAX_PLAYERS) {
       setIssues([OVER_SCOPE_MSG]);
@@ -277,7 +279,7 @@ export function App(): JSX.Element {
     try {
       const res = await prefillFromScreenshot(file, gameMode);
       setOcrReads(res.reads ?? null);
-      setModeMismatch(!!res.modeMismatch);
+      setModeMismatch(res.chipTotals ?? null);
       setStackRecovered(!!res.stackRecovered);
       setUnresolvedStacks(res.unresolvedStacks ?? []);
       setReadout(res.readout);

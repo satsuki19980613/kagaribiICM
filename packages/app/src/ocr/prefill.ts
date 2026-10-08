@@ -54,6 +54,8 @@ export interface OcrPrefillResult {
    * 棄却はせず確認画面で警告するだけ（さつき決定 2026-09-12）。
    */
   readonly modeMismatch?: boolean;
+  /** modeMismatch のときの数値（読み取った場のチップ合計と、選んだゲームならあるべき合計。BB 換算）。 */
+  readonly chipTotals?: { readonly read: number; readonly theory: number };
   /**
    * **未読 1 席のスタックを、選んだゲームの総チップから復元した**。復元値はゲーム選択に直接
    * 依存する（選択が違うとこの席だけ大きくずれる）ので、確認画面で値の確認を促す。
@@ -154,6 +156,9 @@ function packagePipeline(reads: RawReads, gameMode: GameMode, imageSize?: { w: n
     ok: true,
     form: boardStateToForm(res.state),
     ...(res.chipCheck?.modeMismatch ? { modeMismatch: true } : {}),
+    ...(res.chipCheck?.modeMismatch && res.chipCheck.totalBbRead !== undefined && res.chipCheck.totalBbTheory !== undefined
+      ? { chipTotals: { read: res.chipCheck.totalBbRead, theory: res.chipCheck.totalBbTheory } }
+      : {}),
     ...(res.chipCheck?.modeDependentRecovery ? { stackRecovered: true } : {}),
     ...(res.unresolvedStacks.length > 0 ? { unresolvedStacks: res.unresolvedStacks } : {}),
     issues: res.issues,

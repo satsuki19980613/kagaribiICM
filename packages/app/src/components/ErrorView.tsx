@@ -54,6 +54,14 @@ export function ErrorView(props: {
         </div>
       )}
 
+      {props.onPickBb && (
+        <BlindPick
+          onPick={props.onPickBb}
+          hint="画面左上のブラインド（例: SB/BB 820/1640）を読み取れませんでした。スクショと同じ SB/BB を選ぶと、その値で読み直します。"
+          skippable={false}
+        />
+      )}
+
       {canFixGame && (
         <div className="panel">
           <span className="eyebrow">GAME</span>
@@ -64,13 +72,6 @@ export function ErrorView(props: {
             選んだゲームで読み直す
           </button>
         </div>
-      )}
-
-      {props.onPickBb && (
-        <BlindPick
-          onPick={props.onPickBb}
-          hint="画面左上のブラインド（SB/BB）を読み取れませんでした。スクショの SB/BB を選ぶと、その値で読み直します。"
-        />
       )}
 
       {fromPhoto && (

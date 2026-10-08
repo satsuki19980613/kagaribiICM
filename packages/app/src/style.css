@@ -177,6 +177,9 @@ select.tin option{background:var(--face);color:var(--ink)}
   -webkit-backdrop-filter:blur(16px) saturate(140%);backdrop-filter:blur(16px) saturate(140%)}
 .panel-h{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
 .panel-h .rt{font-size:11px;color:var(--muted);font-family:var(--f-num);letter-spacing:.06em}
+/* SB/BB の手動設定（ヘッダが読めなかったとき） */
+.bpick{border-left:3px solid var(--cpu);background:var(--cpu-soft);gap:8px}
+.bpick-t{font-size:15px;font-weight:700}
 .gem{display:inline-block;width:8px;height:8px;transform:rotate(45deg);flex:none;background:linear-gradient(135deg,#fff,var(--you) 65%)}
 .gem.c{background:linear-gradient(135deg,#fff,var(--cpu) 65%)}
 

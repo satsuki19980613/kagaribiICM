@@ -14,7 +14,7 @@
  */
 
 import type { BoardState, GameMode, Position } from '@kagaribi/core';
-import { checkBoardStateSemantics, parseBoardState, totalChipsOf } from '@kagaribi/core';
+import { checkBoardStateSemantics, gameModeLabel, parseBoardState, totalChipsOf } from '@kagaribi/core';
 import type { RawReads } from './types.js';
 import { streetGate } from './gate.js';
 import { reconstructSpot, type SeatFacts } from './spotReconstruction.js';
@@ -83,17 +83,19 @@ export interface OcrPipelineOptions {
 }
 
 /**
- * 「クラブマッチとして整合しない」棄却メッセージ。数値を入れて理由が追えるようにする
+ * 「選んだゲームとして整合しない」棄却メッセージ。数値を入れて理由が追えるようにする
  * （利用者は「別モードのスクショを入れた」のか「読み取りが崩れた」のかを画像と見比べて判断できる）。
+ * ゲーム名は選んだモードのもの（以前は常に「クラブマッチ」と出ていた）。
  */
-function notClubIssue(check: ChipConsistencyResult): string {
+function notClubIssue(check: ChipConsistencyResult, mode: GameMode | undefined): string {
+  const label = gameModeLabel(mode);
   const read = check.totalBbRead;
   const theory = check.totalBbTheory;
   const nums =
     read !== undefined && theory !== undefined
-      ? `（場のチップ合計 ${read.toFixed(1)}bb / クラブマッチなら ${theory.toFixed(1)}bb）`
+      ? `（場のチップ合計 ${read.toFixed(1)}bb / ${label}なら ${theory.toFixed(1)}bb）`
       : '';
-  return `クラブマッチの局面として整合しません${nums}。クラブマッチ以外のモードのスクショか、スタックが大きく誤読されています。`;
+  return `${label}の局面として整合しません${nums}。別のゲームのスクショか、ブラインドかスタックが読み違えられています。`;
 }
 
 export function runOcrPipeline(reads: RawReads, opts: OcrPipelineOptions = {}): OcrValidation {
@@ -148,7 +150,7 @@ export function runOcrPipeline(reads: RawReads, opts: OcrPipelineOptions = {}): 
   // 照合モーダルに席 ID ではなくポジション付きで読み取り結果を出せるので、利用者が
   // 「別モードのスクショを入れた」のか「読み取りが崩れた」のかを画像と見比べて判断できる。
   if (chipCheck.mode === 'not-club-skip') {
-    const issues = [notClubIssue(chipCheck)];
+    const issues = [notClubIssue(chipCheck, opts.gameMode)];
     return {
       ok: false,
       issues,
