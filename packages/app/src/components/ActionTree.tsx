@@ -72,7 +72,7 @@ export function ActionTree(props: { result: SolveResultDto; stacks: Record<strin
           <RangeGrid hands={node.hands} heroHand={state.active === heroIdx ? result.heroHand : ''} />
           <div className="legend">
             <span>
-              <i style={{ background: 'var(--you)' }} />
+              <i style={{ background: 'var(--cpu)' }} />
               {aggrLabel === 'PU' ? 'PUSH' : 'CALL'}
             </span>
             <span>
@@ -81,7 +81,7 @@ export function ActionTree(props: { result: SolveResultDto; stacks: Record<strin
             </span>
             {state.active === heroIdx && (
               <span>
-                <i style={{ boxShadow: 'inset 0 0 0 2px var(--cpu)' }} />
+                <i style={{ boxShadow: 'inset 0 0 0 2px var(--you)' }} />
                 自分の手
               </span>
             )}

@@ -19,6 +19,7 @@ import { InputForm } from './components/InputForm';
 import { RecordsView } from './components/RecordsView';
 import { Result } from './components/Result';
 import { Toast } from './components/Toast';
+import { FireBackground } from './components/FireBackground';
 import { FlameMark, SunIcon } from './components/ui';
 import { applyUpdate, onUpdateReady } from './pwaUpdate';
 
@@ -495,6 +496,8 @@ export function App(): JSX.Element {
   const tab = tabOf(screen);
 
   return (
+    <>
+    <FireBackground />
     <div className="app">
       <header className="top">
         <div className="brand">
@@ -640,5 +643,6 @@ export function App(): JSX.Element {
         </div>
       )}
     </div>
+    </>
   );
 }

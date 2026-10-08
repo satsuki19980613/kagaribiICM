@@ -88,7 +88,7 @@ export function IcmInput(props: {
 
       <h1 className="wordmark">
         <FlameMark />
-        Kagaribi
+        Kagaribi ICM
       </h1>
       <p className="tagline">Screenshot → ICM push / fold</p>
 

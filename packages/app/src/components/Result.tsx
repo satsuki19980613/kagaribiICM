@@ -69,7 +69,7 @@ export function Result(props: {
           <div className="hs-grid two">
             <div className="hs-stat">
               <span className="statlbl">EV（フォールド比）</span>
-              <b className={`hs-val ${headline.heroEv >= 0 ? 'gain' : 'loss'}`}>
+              <b className={`hs-val ${headline.heroEv >= 0 ? 'c-push' : 'c-fold'}`}>
                 {fmtEv(headline.heroEv)}
                 <span className="hs-unit">{ptUnit(state.gameMode)}</span>
               </b>

@@ -87,7 +87,7 @@ export function RecordsView(props: {
                 <li key={r.id} className="rec">
                   <div className="rec-main">
                     <span className="rec-hand">{r.heroHand}</span>
-                    <span className="rec-vd fold">{r.status === 'aborted' ? 'ABORTED' : 'FAILED'}</span>
+                    <span className="rec-vd err">{r.status === 'aborted' ? 'ABORTED' : 'FAILED'}</span>
                     {meta(r)}
                     <span />
                     <span className="rec-err">
