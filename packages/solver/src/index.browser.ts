@@ -12,6 +12,7 @@ export * from './huTableLoader.browser.js';
 export * from './huSolver.js';
 export * from './multiwaySolver.js';
 export * from './nwaySolver.js';
+export * from './raiseSolver.js';
 export * from './showdownJob.js';
 export * from './placement.js';
 export * from './sidepot.js';

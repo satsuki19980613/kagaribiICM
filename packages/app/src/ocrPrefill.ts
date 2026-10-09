@@ -36,5 +36,12 @@ export function boardStateToForm(state: BoardState): BoardForm {
     heroHand: state.heroHand,
     stacks,
     gameMode: state.gameMode ?? 'club',
+    ...(state.raiseTo !== undefined && state.line
+      ? {
+          raiser: (Object.entries(state.line).find(([, a]) => a === 'R')?.[0] ?? '') as Position | '',
+          raiseTo: fmt(state.raiseTo),
+          line: state.line,
+        }
+      : {}),
   };
 }

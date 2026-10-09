@@ -14,23 +14,29 @@ export function ActionTree(props: { result: SolveResultDto; stacks: Record<strin
   useEffect(() => setState(defaultState(result)), [result]);
 
   const order = orderOf(result);
-  const heroIdx = order.indexOf(result.heroPos);
   const rows = treeRows(result, state);
   const node = activeNode(result, state);
-  const activePos = order[state.active]!;
-  const activeWalk = rows[state.active]?.walk ?? false;
-  const aggrLabel = activeWalk ? null : aggressiveFor(state.actions, state.active).label;
+  const activeRow = rows.find((r) => r.seatIdx === state.active);
+  const second = activeRow?.second ?? false;
+  const activePos = activeRow?.pos ?? order[state.active] ?? '';
+  const activeWalk = activeRow?.walk ?? false;
+  const aggrLabel = activeWalk ? null : second ? 'CA' : aggressiveFor(state.actions, state.active).label;
+  const raise = node?.raise ?? null;
   const pct = node?.pct ?? 0;
-  const fold = 100 - pct;
+  const rpct = raise?.pct ?? 0;
+  const fold = Math.max(0, 100 - pct - rpct);
+  const isHeroRow = activePos === result.heroPos;
   const fmtPct = (v: number): string => `${v.toFixed(v >= 10 ? 0 : 1)}%`;
 
   return (
     <>
       <div className="tree">
         {rows.map((row) => (
-          <div key={row.pos} className="arow" data-active={String(state.active === row.seatIdx)}>
+          <div key={`${row.pos}${row.second ? '-2' : ''}`} className="arow" data-active={String(state.active === row.seatIdx)}>
             <span className={`pos${row.pos === result.heroPos ? ' hero' : ''}`}>{row.pos}</span>
-            <span className="stk">{stacks[row.pos] != null ? `${formatBbDisplay(stacks[row.pos]!)}bb` : ''}</span>
+            <span className="stk">
+              {row.second ? <span className="snd">2ND</span> : stacks[row.pos] != null ? `${formatBbDisplay(stacks[row.pos]!)}bb` : ''}
+            </span>
             {row.walk ? (
               <span className="term">NO DECISION</span>
             ) : (
@@ -39,7 +45,7 @@ export function ActionTree(props: { result: SolveResultDto; stacks: Record<strin
                   <button
                     key={opt.label}
                     type="button"
-                    className={opt.aggressive ? 'agg' : undefined}
+                    className={opt.code === 'R' ? 'agg rz' : opt.aggressive ? 'agg' : undefined}
                     aria-pressed={row.current === opt.code}
                     onClick={() => setState((s) => applyChoice(s, row.seatIdx, opt.code))}
                   >
@@ -54,9 +60,11 @@ export function ActionTree(props: { result: SolveResultDto; stacks: Record<strin
 
       <div className="panel-h" style={{ marginTop: 4 }}>
         <span className="eyebrow">
-          {activeWalk || !node ? `${activePos} — NO DECISION` : `${activePos} — ${aggrLabel} RANGE`}
+          {activeWalk || !node
+            ? `${activePos} — NO DECISION`
+            : `${activePos}${second ? ' (2ND)' : ''} — ${raise ? 'RAISE / PU' : aggrLabel} RANGE`}
         </span>
-        {state.active !== heroIdx && <span className="rt">HERO 以外の行を表示中</span>}
+        {!isHeroRow && <span className="rt">HERO 以外の行を表示中</span>}
       </div>
 
       {activeWalk || !node ? (
@@ -66,11 +74,18 @@ export function ActionTree(props: { result: SolveResultDto; stacks: Record<strin
       ) : (
         <>
           <div className="freq">
+            {rpct > 0 && <div className="fr" style={{ width: `${rpct}%` }}>{fmtPct(rpct)}</div>}
             {pct > 0 && <div className="fp" style={{ width: `${pct}%` }}>{fmtPct(pct)}</div>}
             {fold > 0 && <div className="ff" style={{ width: `${fold}%` }}>{fmtPct(fold)}</div>}
           </div>
-          <RangeGrid hands={node.hands} heroHand={state.active === heroIdx ? result.heroHand : ''} />
+          <RangeGrid hands={node.hands} alt={raise?.hands} heroHand={isHeroRow ? result.heroHand : ''} />
           <div className="legend">
+            {raise && (
+              <span>
+                <i style={{ background: 'var(--you)' }} />
+                RAISE {result.raiseTo ?? 2}bb
+              </span>
+            )}
             <span>
               <i style={{ background: 'var(--cpu)' }} />
               {aggrLabel === 'PU' ? 'PUSH' : 'CALL'}
@@ -79,14 +94,15 @@ export function ActionTree(props: { result: SolveResultDto; stacks: Record<strin
               <i style={{ background: 'var(--cell)', boxShadow: 'inset 0 0 0 1px var(--hair-2)' }} />
               FOLD
             </span>
-            {state.active === heroIdx && (
+            {isHeroRow && (
               <span>
                 <i style={{ boxShadow: 'inset 0 0 0 2px var(--you)' }} />
                 HERO のハンド
               </span>
             )}
           </div>
-          <p className="rangestr">{node.range || '(空)'}</p>
+          {raise && <p className="rangestr">RAISE: {raise.range || '(空)'}</p>}
+          <p className="rangestr">{raise ? 'PUSH: ' : ''}{node.range || '(空)'}</p>
         </>
       )}
     </>

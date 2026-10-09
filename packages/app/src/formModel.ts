@@ -4,7 +4,7 @@
  * 上流アクション（誰が push/fold したか）は結果画面のノード選択で扱う（solver は全木を解く）。
  */
 
-import type { BoardState, GameMode, Position } from '@kagaribi/core';
+import type { ActionChar, BoardState, GameMode, Position } from '@kagaribi/core';
 import {
   positionsForPlayersLeft,
   parseBoardState,
@@ -14,6 +14,14 @@ import {
 } from '@kagaribi/core';
 
 export type AnteScheme = 'all' | 'bb' | 'none';
+
+const ACTION_TEXT: Record<string, string> = { R: 'RAISE', P: 'ALL IN', C: 'CALL', F: 'FOLD' };
+
+/** line（席 → アクション）を「UTG RAISE → HJ ALL IN」の形に。フォールドは省く。 */
+export function lineText(order: readonly string[], line: Partial<Record<string, string>>): string {
+  const parts = order.filter((p) => line[p] && line[p] !== 'F').map((p) => `${p} ${ACTION_TEXT[line[p]!] ?? line[p]}`);
+  return parts.join(' → ') || 'なし';
+}
 
 export interface BoardForm {
   playersLeft: number;
@@ -27,6 +35,18 @@ export interface BoardForm {
   stacks: Partial<Record<Position, string>>;
   /** どのゲームモードか（プライズ表が決まる）。UI のゲーム選択ボタンが唯一の根拠。 */
   gameMode: GameMode;
+  /**
+   * 最初に参加してレイズした人（ミニレイズ・ゲーム）。空なら AOF。手入力では hero より前の席を選ぶ
+   * （その人より前と、その人から hero までの席はフォールドした扱い）。
+   */
+  raiser?: Position | '';
+  /** レイズ額（BB, 総ベット額）の入力文字列。既定 "2"。 */
+  raiseTo?: string;
+  /**
+   * スクショから読んだ hero の判断までのアクション。raiser を手で変えたら破棄する
+   * （そのときは raiser 以外を全員フォールドとして組み立て直す）。
+   */
+  line?: Partial<Record<Position, ActionChar>>;
 }
 
 /**
@@ -116,7 +136,28 @@ export function buildBoardState(form: BoardForm): BuildResult {
     gameMode: form.gameMode,
   };
 
-  const parsed = parseBoardState(candidate);
+  // ミニレイズ・ゲーム（最初の参加者のレイズ）。
+  const raiser = form.raiser || '';
+  let raiseFields: { raiseTo?: number; line?: Partial<Record<Position, ActionChar>> } = {};
+  if (raiser) {
+    const raiseTo = num(form.raiseTo ?? '2');
+    const order = positions;
+    const ri = order.indexOf(raiser);
+    const hi = order.indexOf(form.heroPos);
+    const line = form.line ?? Object.fromEntries(order.slice(0, hi).map((p) => [p, p === raiser ? 'R' : 'F']));
+    const heroResponds = line[form.heroPos] === 'R';
+    if (ri < 0) issues.push(`レイズした人 ${raiser} がこの人数の卓にいません`);
+    else if (!heroResponds && ri >= hi) issues.push('レイズした人は HERO より前の席を選んでください');
+    const rs = seats[ri];
+    if (!Number.isFinite(raiseTo) || raiseTo <= bb || raiseTo > 3.05) {
+      issues.push('レイズ額は BB より大きく 3bb 以下で入力してください');
+    } else if (rs && rs.stack + rs.bet <= raiseTo) {
+      issues.push(`${raiser} のスタックではレイズ ${raiseTo}bb がオールインになります（オールインとして扱ってください）`);
+    }
+    raiseFields = { raiseTo, line };
+  }
+
+  const parsed = parseBoardState({ ...candidate, ...raiseFields });
   if (!parsed.ok) {
     return { ok: false, issues: [...issues, ...parsed.issues], potDelta: null };
   }

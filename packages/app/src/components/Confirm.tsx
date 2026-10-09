@@ -1,4 +1,5 @@
-import { formatBbDisplay, gameModeLabel, type BoardState } from '@kagaribi/core';
+import { formatBbDisplay, gameModeLabel, positionsForPlayersLeft, type BoardState } from '@kagaribi/core';
+import { lineText } from '../formModel';
 import type { OcrReadout } from '@kagaribi/ocr';
 import { useState } from 'react';
 import { BlindPick } from './BlindPick';
@@ -119,8 +120,20 @@ export function Confirm(props: {
           <dt>POT</dt>
           <dd className={pot.ok ? '' : 'warn'}>{pot.text}</dd>
           <dd className="tag" />
+          {state.raiseTo !== undefined && state.line && (
+            <>
+              <dt>ACTION</dt>
+              <dd>{lineText(positionsForPlayersLeft(state.playersLeft), state.line).replace('RAISE', `RAISE ${formatBbDisplay(state.raiseTo)}bb`)}</dd>
+              <dd className="tag" />
+            </>
+          )}
         </dl>
       </div>
+      {state.raiseTo !== undefined && (
+        <div className="notice">
+          最初の人のレイズが入った局面として計算します。レイズの後は全員オールインかフォールドだけ（フラットコールなし）のモデルで、レイズする人のレンジもソルバーが決めます。
+        </div>
+      )}
 
       <div className="list-h">
         <span className="eyebrow">STACKS</span>

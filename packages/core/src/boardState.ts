@@ -11,6 +11,7 @@ import { z } from 'zod';
 import { GAME_MODES } from './gameMode.js';
 import { POSITIONS } from './positions.js';
 import { isHandClass } from './cards.js';
+import { ACTION_CHARS } from './key.js';
 import { positionsMatchPlayersLeft, isValidPlayersLeft } from './positions.js';
 
 export const SEAT_STATES = ['live', 'fold', 'allin', 'call', 'empty'] as const;
@@ -64,6 +65,18 @@ export const BoardStateSchema = z.object({
    * Worker にも自動で流れる（DB マイグレーション不要）。v3 以前の記録は未指定＝クラブ。
    */
   gameMode: z.enum(GAME_MODES).optional(),
+  /**
+   * ミニレイズ・ゲームで解くときのレイズ額（BB 単位の総ベット額, 例 2）。**省略時は AOF**。
+   * 最初に参加する人だけがこの額までレイズでき、ほかは全員オールインかフォールドのみ
+   * （さつき決定 2026-10-09 の B 案）。レイズした人はオールインを受けたらコールかフォールド。
+   */
+  raiseTo: z.number().finite().positive().optional(),
+  /**
+   * hero の判断までに起きたアクション（席 → 'F' / 'R' / 'P' / 'C'）。hero の決定ノードを
+   * 結果画面の見出しに選ぶために使う。hero 自身が 'R' なら「レイズ後にオールインを受けた」判断。
+   * 省略時は従来どおり（hero の未開ノード）。
+   */
+  line: z.record(z.enum(POSITIONS), z.enum(ACTION_CHARS)).optional(),
 });
 export type BoardState = z.infer<typeof BoardStateSchema>;
 

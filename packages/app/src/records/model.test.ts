@@ -7,6 +7,7 @@ import {
   evLossOf,
   finishRecord,
   headlineNode,
+  heroNodeKey,
   isUnopened,
   startRecord,
   verdictOf,
@@ -297,5 +298,21 @@ describe('aggregate', () => {
 
   it('空配列で count=0 / totalEvLoss=0', () => {
     expect(aggregate([])).toEqual({ count: 0, totalEvLoss: 0 });
+  });
+});
+
+describe('heroNodeKey（ミニレイズ・ゲーム）', () => {
+  const base = {
+    street: 'preflop', blinds: { sb: 0.5, bb: 1 }, ante: { scheme: 'all', amount: 0.25 }, heroHand: 'AA',
+    playersLeft: 4, seats: [], raiseTo: 2,
+  } as unknown as BoardState;
+  it('レイズを受けた hero は自分より前の席だけでキーを作る', () => {
+    expect(heroNodeKey({ ...base, heroPos: 'SB', line: { CO: 'R', BU: 'F' } })).toBe('CO:R,BU:F,SB:-,BB:-');
+  });
+  it('レイズした本人は全席が埋まった 2 回目のキー', () => {
+    expect(heroNodeKey({ ...base, heroPos: 'CO', line: { CO: 'R', BU: 'F', SB: 'P', BB: 'F' } })).toBe('CO:R,BU:F,SB:P,BB:F');
+  });
+  it('line が無ければ undefined（従来の見出し選択）', () => {
+    expect(heroNodeKey({ ...base, heroPos: 'CO' })).toBeUndefined();
   });
 });

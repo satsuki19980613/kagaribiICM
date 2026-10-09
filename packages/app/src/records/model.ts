@@ -12,7 +12,7 @@
  * finishRecord の後、任意のタイミングで別途セットする（サーバ側は setHeroAction）。
  */
 
-import type { BoardState } from '@kagaribi/core';
+import { normalizeKey, type BoardState } from '@kagaribi/core';
 import type { SolveNodeDto, SolveResultDto } from '../solverProtocol';
 
 /** 押し引きの2択。UI 表記は PU/CA/OC いずれでも "ALL IN"（SPEC §7.4）だが内部は PUSH。 */
@@ -26,8 +26,24 @@ export function isUnopened(n: SolveNodeDto): boolean {
   return n.actionType === 'PU' && !n.key.includes(':P') && !n.key.includes(':C');
 }
 
+/**
+ * state.line（hero の判断までのアクション）から hero の決定ノードのキーを作る。hero 自身が 'R'
+ * （レイズしてオールインを受けた）なら全席が埋まった 2 回目のノード、それ以外は hero より前の席だけ。
+ */
+export function heroNodeKey(state: BoardState): string | undefined {
+  if (!state.line) return undefined;
+  if (state.line[state.heroPos] === 'R') return normalizeKey(state.playersLeft, state.line);
+  const before = Object.entries(state.line).filter(([p]) => p !== state.heroPos);
+  return normalizeKey(state.playersLeft, Object.fromEntries(before));
+}
+
 /** hero の見出し決定ノード（未開プッシュ優先、無ければ先頭）。決定が無ければ null。 */
 export function headlineNode(result: SolveResultDto): SolveNodeDto | null {
+  // 局面のアクションが分かっている（ミニレイズ・ゲーム）なら、その決定ノードそのもの。
+  if (result.heroKey) {
+    const hit = result.nodes.find((n) => n.key === result.heroKey && n.actor === result.heroPos);
+    if (hit) return hit;
+  }
   const heroNodes = result.nodes.filter((n) => n.actor === result.heroPos);
   return heroNodes.find(isUnopened) ?? heroNodes[0] ?? null;
 }

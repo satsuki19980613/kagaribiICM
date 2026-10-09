@@ -6,8 +6,10 @@
 
 import type { GameMode } from '@kagaribi/core';
 import { ptDisplayScale } from '@kagaribi/core';
+import { heroNodeKey } from './records/model';
 import {
   solveMultiway,
+  solveRaiseGame,
   solveHu,
   loadHuTableBrowser,
   loadHuWinTieTableBrowser,
@@ -150,6 +152,7 @@ interface CommonNode {
   freq: Record<string, number>;
   ev: Record<string, number>;
   equity: Record<string, { pre: number; post: number }>;
+  raise?: { pct: number; range: string; hands: string[]; freq: Record<string, number>; ev: Record<string, number> };
 }
 interface CommonResult {
   nodes: CommonNode[];
@@ -173,6 +176,7 @@ function toDto(
   heroPos: string,
   heroHand: string,
   mode: GameMode | undefined,
+  extra: { raiseTo?: number; heroKey?: string } = {},
 ): SolveResultDto {
   const k = ptDisplayScale(mode);
   const equity = r.nodes.length > 0 ? r.nodes[0]!.equity : {};
@@ -197,7 +201,19 @@ function toDto(
       hands: n.hands,
       heroFreq: n.freq[heroHand] ?? 0,
       heroEv: (n.ev[heroHand] ?? 0) * k,
+      ...(n.raise
+        ? {
+            raise: {
+              pct: n.raise.pct,
+              range: n.raise.range,
+              hands: n.raise.hands,
+              heroFreq: n.raise.freq[heroHand] ?? 0,
+              heroEv: (n.raise.ev[heroHand] ?? 0) * k,
+            },
+          }
+        : {}),
     })),
+    ...extra,
   };
 }
 
@@ -218,7 +234,21 @@ self.onmessage = async (e: MessageEvent<SolveRequest | McResultMsg>): Promise<vo
   const t0 = performance.now();
   try {
     let dto: SolveResultDto;
-    if (state.playersLeft === 2) {
+    if (state.raiseTo !== undefined) {
+      // ミニレイズ・ゲーム（最初の参加者のレイズ＋その後はオールインかフォールドのみ）。事前計算
+      // テーブルは AOF 専用なので常に直接求解する。hero が深すぎる局面は AOF と同じく対象外。
+      const hero = state.seats.find((x) => x.pos === state.heroPos);
+      const ante = state.ante.scheme === 'all' || (state.ante.scheme === 'bb' && state.heroPos === 'BB') ? state.ante.amount : 0;
+      if (hero && hero.stack + hero.bet + ante > 25.5) throw new Error(OUT_OF_SCOPE_MSG);
+      const [winTie, winTie3] = await Promise.all([getWinTie(), getWinTie3()]);
+      const r = await solveRaiseGame(state, {
+        mcRunner, winTie, winTie3, ...(opts?.maxIters ? { maxIters: opts.maxIters } : {}),
+      });
+      dto = toDto(r as unknown as CommonResult, state.playersLeft, state.heroPos, state.heroHand, state.gameMode, {
+        raiseTo: r.raiseTo,
+        heroKey: heroNodeKey(state),
+      });
+    } else if (state.playersLeft === 2) {
       const table = await getHuTable();
       const r = solveHu(state, { table, ...(opts?.maxIters ? { maxIters: opts.maxIters } : {}) });
       dto = toDto(r as unknown as CommonResult, 2, state.heroPos, state.heroHand, state.gameMode);

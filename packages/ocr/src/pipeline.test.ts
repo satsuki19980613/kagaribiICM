@@ -183,6 +183,75 @@ describe('pipeline — 対象外検出（§6.5）', () => {
     expect(r.issues.join()).toMatch(/レイズ|3bet|リンプ/);
   });
 
+  it('最初の人のミニレイズはミニレイズ・ゲームとして通す（line・raiseTo を載せる）', () => {
+    // clockwiseFromButton(5) = [BU, SB, BB, UTG, CO]。UTG が 2bb にレイズ、hero CO。
+    const r = runOcrPipeline(
+      mkReads({
+        pot: 3.5,
+        seats: [
+          { id: 'BU', button: true, stack: 15, bet: 0 },
+          { id: 'SB', stack: 14.5, bet: 0.5 },
+          { id: 'BB', stack: 14, bet: 1 },
+          { id: 'UTG', action: 'raise', stack: 13, bet: 2 },
+          { id: 'CO', hero: true, stack: 15, bet: 0 },
+        ],
+      }),
+    );
+    expect(r.ok).toBe(true);
+    expect(r.state!.raiseTo).toBe(2);
+    expect(r.state!.line).toEqual({ UTG: 'R' });
+    const utg = r.state!.seats.find((x) => x.pos === 'UTG')!;
+    expect(utg.stack).toBeCloseTo(15); // 2bb を戻した持ち込み
+  });
+
+  it('レイズした本人がオールインを受けた場面は全員のアクションを line に載せる', () => {
+    const r = runOcrPipeline(
+      mkReads({
+        pot: 18.5,
+        seats: [
+          { id: 'BU', button: true, action: 'fold', stack: 15, bet: 0 },
+          { id: 'SB', action: 'fold', stack: 14.5, bet: 0 },
+          { id: 'BB', action: 'allin', stack: 0, bet: 15 },
+          { id: 'UTG', hero: true, action: 'raise', stack: 13, bet: 2 },
+          { id: 'CO', action: 'fold', stack: 15, bet: 0 },
+        ],
+      }),
+    );
+    expect(r.ok).toBe(true);
+    expect(r.state!.line).toEqual({ UTG: 'R', CO: 'F', BU: 'F', SB: 'F', BB: 'P' });
+  });
+
+  it('レイズへのフラットコールと 3bet は弾く', () => {
+    const flat = runOcrPipeline(
+      mkReads({
+        pot: 5.5,
+        seats: [
+          { id: 'BU', button: true, hero: true, stack: 15, bet: 0 },
+          { id: 'SB', stack: 14.5, bet: 0.5 },
+          { id: 'BB', stack: 14, bet: 1 },
+          { id: 'UTG', action: 'raise', stack: 13, bet: 2 },
+          { id: 'CO', action: 'call', stack: 13, bet: 2 },
+        ],
+      }),
+    );
+    expect(flat.ok).toBe(false);
+    expect(flat.issues.join()).toMatch(/コール/);
+    const big = runOcrPipeline(
+      mkReads({
+        pot: 5.5,
+        seats: [
+          { id: 'BU', button: true, stack: 15, bet: 0 },
+          { id: 'SB', stack: 14.5, bet: 0.5 },
+          { id: 'BB', stack: 14, bet: 1 },
+          { id: 'UTG', action: 'raise', stack: 11, bet: 4 },
+          { id: 'CO', hero: true, stack: 15, bet: 0 },
+        ],
+      }),
+    );
+    expect(big.ok).toBe(false);
+    expect(big.issues.join()).toMatch(/3bb までのレイズ/);
+  });
+
   it('ウォーク（hero BB・全員フォールド）を no decision として弾く', () => {
     // 3人: clockwiseFromButton(3)=[BU,SB,BB]。BU/SB フォールド、hero BB
     const r = runOcrPipeline(

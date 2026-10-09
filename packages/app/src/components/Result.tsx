@@ -1,4 +1,4 @@
-import { formatBbDisplay, gameModeLabel, type BoardState, type GameMode } from '@kagaribi/core';
+import { formatBbDisplay, gameModeLabel, positionsForPlayersLeft, type BoardState, type GameMode } from '@kagaribi/core';
 import { useState } from 'react';
 import type { SolveResultDto } from '../solverProtocol';
 import { evLossOf, headlineNode, verdictOf, type HeroAction } from '../records/model';
@@ -10,8 +10,26 @@ import { Back } from './ui';
 function ptUnit(mode: GameMode | undefined): string {
   return (mode ?? 'club') === 'club' ? 'pt' : 'pt（クラブ換算）';
 }
-const ACTION_EN: Record<string, string> = { PU: 'OPEN PUSH', CA: 'CALL', OC: 'OVERCALL' };
+const ACTION_EN: Record<string, string> = {
+  PU: 'OPEN PUSH',
+  CA: 'CALL',
+  OC: 'OVERCALL',
+  RS: 'PUSH vs RAISE',
+  RC: 'CALL (2ND)',
+};
+/** コール系の判断（オールインを受ける側）。見出しの PUSH を CALL と出す。 */
+const CALL_TYPES = new Set(['CA', 'OC', 'RC']);
 const fmtEv = (v: number): string => `${v >= 0 ? '+' : '−'}${Math.abs(v).toFixed(3)}`;
+
+/** ミニレイズ・ゲームの局面の説明（例「UTG の 2bb レイズ → HJ ALL IN に対する判断」）。 */
+function raiseLineText(state: BoardState): string {
+  const line = state.line ?? {};
+  const order = positionsForPlayersLeft(state.playersLeft);
+  const parts = order
+    .filter((p) => line[p] && line[p] !== 'F')
+    .map((p) => (line[p] === 'R' ? `${p} の ${formatBbDisplay(state.raiseTo ?? 2)}bb レイズ` : `${p} ${line[p] === 'P' ? 'ALL IN' : 'CALL'}`));
+  return `${parts.join(' → ')}に対する判断`;
+}
 
 /** 計算結果。自分の選択（ALL IN / FOLD / 未選択）は押した時点で記録に保存する。 */
 export function Result(props: {
@@ -56,7 +74,9 @@ export function Result(props: {
             <span className={`mtag${club ? '' : ' c'}`}>{gameModeLabel(state.gameMode)}</span>
           </div>
           <div className="vtop">
-            <div className={`verdict${verdict === 'FOLD' ? ' fold' : ''}`}>{verdict}</div>
+            <div className={`verdict${verdict === 'FOLD' ? ' fold' : ''}`}>
+              {verdict === 'PUSH' && CALL_TYPES.has(headline.actionType) ? 'CALL' : verdict}
+            </div>
             <div className="vhand">{result.heroHand}</div>
           </div>
           <div className="vmeta">
@@ -67,6 +87,11 @@ export function Result(props: {
               {ACTION_EN[headline.actionType] ?? headline.actionType} {headline.pct.toFixed(1)}%
             </span>
           </div>
+          {result.raiseTo !== undefined && (
+            <p className="hint">
+              {raiseLineText(state)}。レイズの後はオールインかフォールドだけのモデルで、レイズする人のレンジもソルバーが決めています。
+            </p>
+          )}
           <div className="hs-grid two">
             <div className="hs-stat">
               <span className="statlbl">EV（フォールド比）</span>

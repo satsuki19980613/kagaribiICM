@@ -32,6 +32,11 @@ export interface SolveNodeDto {
   heroFreq: number;
   /** hero ハンドの EV（アグレッシブ − フォールド, 実払い pt）。 */
   heroEv: number;
+  /**
+   * ミニレイズ・ゲームの未開ノードでレイズできるときのレイズ側（主フィールドはオールイン側）。
+   * AOF の結果には無い。
+   */
+  raise?: { pct: number; range: string; hands: string[]; heroFreq: number; heroEv: number };
 }
 
 /** 結果画面に渡す DTO（構造化クローンで転送可能なプレーンオブジェクト）。 */
@@ -45,6 +50,10 @@ export interface SolveResultDto {
   /** 席（ポジション）→ EQPre/EQPost（実払い pt）。 */
   equity: Record<string, { pre: number; post: number }>;
   nodes: SolveNodeDto[];
+  /** ミニレイズ・ゲームで解いたときのレイズ額（BB）。AOF なら無し。 */
+  raiseTo?: number;
+  /** 局面のアクション（state.line）から決まる hero の決定ノードのキー。無ければ従来の見出し選択。 */
+  heroKey?: string;
 }
 
 export type SolveResponse =

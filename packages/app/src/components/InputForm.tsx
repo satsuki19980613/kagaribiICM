@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type { Position } from '@kagaribi/core';
 import { positionsForPlayersLeft } from '@kagaribi/core';
 import type { OcrReadout } from '@kagaribi/ocr';
-import { buildBoardState, reconcilePositions, type AnteScheme, type BoardForm } from '../formModel';
+import { buildBoardState, lineText, reconcilePositions, type AnteScheme, type BoardForm } from '../formModel';
 import { HandPicker } from './HandGrid';
 import { ImageModal } from './ImageModal';
 import { Modal } from './ui';
@@ -24,6 +24,9 @@ export function InputForm(props: {
   const set = (patch: Partial<BoardForm>): void => onFormChange({ ...form, ...patch });
   const setStack = (pos: Position, v: string): void => onFormChange({ ...form, stacks: { ...form.stacks, [pos]: v } });
   const preview = buildBoardState(form);
+  // レイズした人の候補: HERO より前の席（スクショで HERO 自身がレイズしていたら HERO も）。
+  const heroAt = positions.indexOf(form.heroPos);
+  const raiserOptions = positions.filter((p, i) => i < heroAt || (p === form.heroPos && form.line?.[p] === 'R'));
 
   return (
     <Modal
@@ -50,7 +53,7 @@ export function InputForm(props: {
             key={n}
             type="button"
             aria-pressed={form.playersLeft === n}
-            onClick={() => onFormChange(reconcilePositions({ ...form, playersLeft: n }))}
+            onClick={() => onFormChange(reconcilePositions({ ...form, playersLeft: n, line: undefined }))}
           >
             {n}
           </button>
@@ -97,7 +100,7 @@ export function InputForm(props: {
                 type="button"
                 className={`pos${hero ? ' hero' : ''}`}
                 aria-pressed={hero}
-                onClick={() => set({ heroPos: pos })}
+                onClick={() => set({ heroPos: pos, line: undefined })}
               >
                 {pos}
               </button>
@@ -113,6 +116,44 @@ export function InputForm(props: {
           );
         })}
       </div>
+
+      <label className="lbl" htmlFor="f-rs">RAISE ・ 最初に参加した人のレイズ</label>
+      <div className="fgrid">
+        <div>
+          <select
+            id="f-rs"
+            className="tin"
+            value={form.raiser ?? ''}
+            onChange={(e) => set({ raiser: e.target.value as Position | '', raiseTo: form.raiseTo ?? '2', line: undefined })}
+          >
+            <option value="">なし（オールインかフォールドだけ）</option>
+            {raiserOptions.map((p) => (
+              <option key={p} value={p}>
+                {p === form.heroPos ? `${p}（HERO・オールインを受けた）` : `${p} がレイズ`}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <input
+            className="tin"
+            inputMode="decimal"
+            aria-label="レイズ額（bb）"
+            value={form.raiser ? (form.raiseTo ?? '2') : ''}
+            placeholder="2"
+            disabled={!form.raiser}
+            onChange={(e) => set({ raiseTo: e.target.value })}
+          />
+        </div>
+      </div>
+      {form.raiser && (
+        <p className="hint">
+          {form.line
+            ? `スクショのアクション: ${lineText(positions, form.line)}`
+            : `${form.raiser} より前と、${form.raiser} から HERO までの席はフォールドした扱いです。`}
+          {' '}レイズの後はオールインかフォールドだけのモデルで解きます。
+        </p>
+      )}
 
       <label className="lbl">HAND</label>
       <button type="button" className="handbtn" aria-expanded={showGrid} onClick={() => setShowGrid((s) => !s)}>

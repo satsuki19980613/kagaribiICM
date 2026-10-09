@@ -15,10 +15,49 @@
  * 「配られた時点の持ち込み」に戻り、solver が root から解ける。
  *
  * push/fold Nash はフォールドとオールインしか持たない。よって非オールインの
- * 自発的コミット（リンプ・ミニレイズ・3bet 等）を検出したら対象外エラーとする（§6.5）。
+ * 自発的コミット（リンプ・3bet 等）を検出したら対象外エラーとする（§6.5）。
+ * 例外は「最初に参加した 1 人のレイズ（3BB まで）」で、これはミニレイズ・ゲーム
+ * （solver の solveRaiseGame・さつき決定 2026-10-09）として解く。そのとき state に
+ * raiseTo（レイズ額）と line（hero の判断までのアクション）を載せる。
  */
 
-import type { BoardState, Position, Seat } from '@kagaribi/core';
+/** 扱えるレイズ額の上限（BB）。最初の人のミニレイズ〜3BB オープンまで。 */
+export const MAX_RAISE_TO = 3.05;
+
+const orderIdx = (pos: Position): number => POSITIONS.indexOf(pos);
+
+/** 行動順（UTG→BB）に並べ替えた facts。 */
+function inActionOrder(facts: readonly SeatFacts[]): SeatFacts[] {
+  return [...facts].sort((a, b) => orderIdx(a.pos) - orderIdx(b.pos));
+}
+
+/**
+ * 画面に「最初の参加者のレイズ」があればその情報を返す（対象外判定は detectOutOfScope）。
+ * line は hero の判断までのアクション（hero がレイズした本人なら全員分＋hero='R'）。
+ */
+export function raiseLine(
+  facts: readonly SeatFacts[],
+  heroPos: Position,
+): { raiseTo: number; line: Partial<Record<Position, ActionChar>> } | null {
+  const ordered = inActionOrder(facts);
+  const r = ordered.find((f) => f.action === 'raise');
+  if (!r) return null;
+  const heroIsRaiser = r.pos === heroPos;
+  const heroAt = orderIdx(heroPos);
+  const line: Partial<Record<Position, ActionChar>> = {};
+  let sawAllin = false;
+  for (const f of ordered) {
+    if (!heroIsRaiser && orderIdx(f.pos) >= heroAt) break;
+    if (f.pos === r.pos) line[f.pos] = 'R';
+    else if (f.action === 'allin' || f.action === 'call') {
+      line[f.pos] = sawAllin ? 'C' : 'P';
+      sawAllin = true;
+    } else line[f.pos] = 'F';
+  }
+  return { raiseTo: Math.round(r.screenBet * 20) / 20, line };
+}
+
+import { POSITIONS, type ActionChar, type BoardState, type Position, type Seat } from '@kagaribi/core';
 import type { RawReads, RawSeatRead, SeatAction } from './types.js';
 import { derivePositions } from './positionDerivation.js';
 import type { PhysicalSeat } from './types.js';
@@ -65,11 +104,46 @@ export function detectOutOfScope(
 ): string[] {
   const issues: string[] = [];
   const anyAllin = facts.some((f) => f.action === 'allin');
+  const ordered = inActionOrder(facts);
+  const raises = ordered.filter((f) => f.action === 'raise');
+
+  // 最初の参加者のレイズ 1 回だけはミニレイズ・ゲームとして扱える。
+  const firstRaise = raises.length === 1 ? raises[0]! : null;
+  if (raises.length > 1) {
+    for (const f of raises.slice(1)) issues.push(`${f.pos} がレイズ（非オールイン）しています（2 回目のレイズ・3bet は扱えません）`);
+  }
+  if (firstRaise) {
+    const before = ordered.filter((f) => orderIdx(f.pos) < orderIdx(firstRaise.pos));
+    if (before.some((f) => f.action === 'allin' || f.action === 'call' || f.action === 'raise')) {
+      issues.push(`${firstRaise.pos} がレイズ（非オールイン）しています（ほかの人が参加した後のレイズは扱えません）`);
+    } else if (!(firstRaise.screenBet > 1 + EPS && firstRaise.screenBet <= MAX_RAISE_TO)) {
+      issues.push(
+        `${firstRaise.pos} がレイズ（非オールイン）${firstRaise.screenBet.toFixed(1)}bb しています（扱えるのは最初の人の 3bb までのレイズです）`,
+      );
+    }
+    // レイズへのフラットコール（オールインでないコール）はゲームに無い。
+    let allinSeen = false;
+    for (const f of ordered) {
+      if (f.action === 'allin') allinSeen = true;
+      if (f.action === 'call' && !allinSeen) {
+        issues.push(`${f.pos} がコール（リンプ/非オールインへのコール）しています（レイズへのコールは扱えません）`);
+      }
+    }
+    // hero はレイズした人より後ろの席か、レイズした本人でなければならない（前の席はもう行動済み）。
+    const hero = ordered.find((f) => f.isHero);
+    if (hero && orderIdx(hero.pos) < orderIdx(firstRaise.pos)) {
+      issues.push(`${firstRaise.pos} のレイズより前の席（自分）の判断は扱えません（行動マークの読み違いかもしれません）`);
+    }
+    // hero がレイズした本人なら、オールインを受けてもう一度判断する場面でなければならない。
+    if (firstRaise.isHero && !ordered.some((f) => f.action === 'allin')) {
+      issues.push('自分のレイズの後にオールインが入っていません（判断が残っていない画面です）');
+    }
+  }
 
   for (const f of facts) {
     if (f.action === 'raise') {
-      issues.push(`${f.pos} がレイズ（非オールイン）しています（ミニレイズ/オープン/3bet は push/fold では扱えません）`);
-    } else if (f.action === 'call' && !anyAllin) {
+      // 上で判定済み（レイズはミニレイズ・ゲームの条件を満たせば対象内）。
+    } else if (f.action === 'call' && !anyAllin && !firstRaise) {
       issues.push(`${f.pos} がコール（リンプ/非オールインへのコール）しています（push/fold では扱えません）`);
     } else if (f.action === 'none' && !f.folded) {
       // ラベルが無いのにベットが blind を超える＝読み落とし or 非対応アクション
@@ -215,6 +289,9 @@ export function reconstructSpot(
     heroHandConfidence: reads.heroHand.conf,
   };
 
+  const raised = raiseLine(facts, derived.heroPos);
+  const solveState: BoardState = raised ? { ...state, raiseTo: raised.raiseTo, line: raised.line } : state;
+
   const factsMap = new Map<Position, SeatFacts>(facts.map((f) => [f.pos, f]));
-  return { ok: true, issues: [], state, facts: factsMap };
+  return { ok: true, issues: [], state: solveState, facts: factsMap };
 }

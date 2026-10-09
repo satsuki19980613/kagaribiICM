@@ -230,6 +230,8 @@ button.hc{cursor:pointer}
 .hc.on{background:var(--cpu);color:var(--cpu-ink)}
 .hc.hero{box-shadow:inset 0 0 0 2px var(--you);color:var(--ink)}
 .hc.on.hero{box-shadow:inset 0 0 0 2px var(--you),inset 0 0 0 3px #fff;color:var(--cpu-ink)}
+.hc.alt{background:var(--you);color:#fff}
+.hc.alt.hero{box-shadow:inset 0 0 0 2px #fff,inset 0 0 0 3px var(--you);color:#fff}
 .legend{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:11px;color:var(--muted)}
 .legend span{display:inline-flex;align-items:center;gap:6px}
 .legend i{width:11px;height:11px;display:inline-block}
@@ -272,6 +274,9 @@ button.hc{cursor:pointer}
 .freq>div{display:flex;align-items:center;justify-content:center;white-space:nowrap;overflow:hidden;min-width:0}
 .freq .fp{background:var(--cpu);color:var(--cpu-ink)}
 .freq .ff{color:var(--muted)}
+.freq .fr{background:var(--you);color:#fff}
+.arow .seg button.agg.rz[aria-pressed="true"]{background:var(--you);color:#fff}
+.arow .snd{font-size:10px;font-weight:700;letter-spacing:.1em;color:var(--you-text)}
 
 /* 表 */
 .tbl{width:100%;border-collapse:collapse;font-family:var(--f-num);font-variant-numeric:tabular-nums}

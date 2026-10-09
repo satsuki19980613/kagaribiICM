@@ -5,12 +5,16 @@
  * 例: "UTG:P,CO:F,BU:-,SB:-,BB:-"
  *
  * アクション文字:
- *   '-' 未行動 / 'P' プッシュ(オールイン) / 'C' コール / 'F' フォールド
+ *   '-' 未行動 / 'P' プッシュ(オールイン) / 'C' コール / 'F' フォールド / 'R' オールインでないレイズ
+ *   （ミニレイズ・ゲーム＝最初に参加する人だけがレイズでき、他はオールインかフォールドのみ）
+ *
+ * ミニレイズ・ゲームでは、レイズした人がオールインを受けてもう一度判断する。そのノードは
+ * 全席が埋まったキー（actor の席も 'R'）になるので、1 周目のノード（actor の席は '-'）と衝突しない。
  */
 
 import { positionsForPlayersLeft, type Position } from './positions.js';
 
-export const ACTION_CHARS = ['-', 'P', 'C', 'F'] as const;
+export const ACTION_CHARS = ['-', 'P', 'C', 'F', 'R'] as const;
 export type ActionChar = (typeof ACTION_CHARS)[number];
 
 export type ActionMap = Partial<Record<Position, ActionChar>>;

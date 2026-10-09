@@ -116,3 +116,47 @@ describe('Action tree モデル（実ソルバー出力と整合）', () => {
     expect(aggressiveFor(['F', 'P', '-'], 2)).toEqual({ code: 'C', label: 'CA' });
   });
 });
+
+describe('ミニレイズ・ゲームのツリー', () => {
+  const node = (key: string, actor: string, actionType: string, heroFreq: number, raise?: boolean): SolveNodeDto => ({
+    key, actor, actionType, pct: 20, range: 'AA', hands: ['AA'], heroFreq, heroEv: 0,
+    ...(raise ? { raise: { pct: 10, range: 'KK', hands: ['KK'], heroFreq: 0, heroEv: 0 } } : {}),
+  });
+  const result = (heroPos: string, heroKey: string): SolveResultDto => ({
+    playersLeft: 2, heroPos, heroHand: 'AA', iterations: 1, exploitabilityPt: 0, converged: true, equity: {},
+    raiseTo: 2, heroKey,
+    nodes: [
+      node('SB:-,BB:-', 'SB', 'PU', 0, true),
+      node('SB:P,BB:-', 'BB', 'CA', 1),
+      node('SB:R,BB:-', 'BB', 'RS', 1),
+      node('SB:R,BB:P', 'SB', 'RC', 1),
+    ],
+  });
+
+  it('hero のキーから始まり、未開の行にだけ RAISE が出る', () => {
+    const r = result('BB', 'SB:R,BB:-');
+    const st = defaultState(r);
+    expect(st.actions).toEqual(['R', 'P']);
+    expect(st.active).toBe(1);
+    expect(activeNode(r, st)!.key).toBe('SB:R,BB:-');
+    const rows = treeRows(r, st);
+    expect(rows[0]!.options.map((o) => o.label)).toEqual(['FOLD', 'RAISE', 'PU']);
+    expect(rows[1]!.options.map((o) => o.label)).toEqual(['FOLD', 'PU']);
+    // BB がオールインしたのでレイズした SB の 2 回目の行が出る。
+    expect(rows[2]!.second).toBe(true);
+    expect(rows[2]!.pos).toBe('SB');
+    const st2 = applyChoice(st, 2, 'C');
+    expect(activeNode(r, st2)!.key).toBe('SB:R,BB:P');
+  });
+
+  it('hero がレイズした本人なら 2 回目の行から始まる', () => {
+    const r = result('SB', 'SB:R,BB:P');
+    const st = defaultState(r);
+    expect(st.active).toBe(2);
+    expect(st.resp).toBe('C');
+    expect(activeNode(r, st)!.key).toBe('SB:R,BB:P');
+    // BB をフォールドに戻すと 2 回目の行は消える。
+    const st2 = applyChoice(st, 1, 'F');
+    expect(treeRows(r, st2).some((x) => x.second)).toBe(false);
+  });
+});
