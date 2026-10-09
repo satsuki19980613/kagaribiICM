@@ -1,4 +1,4 @@
-import type { BoardState, Position } from '@kagaribi/core';
+import { POSITIONS, type BoardState, type Position } from '@kagaribi/core';
 import { icmEquities, payoutsForPlayers } from '@kagaribi/solver';
 
 /**
@@ -12,6 +12,7 @@ import { icmEquities, payoutsForPlayers } from '@kagaribi/solver';
  * （誰かがプッシュ済み）でも、席どうしの「力関係」を見る表なので開始時の値で揃える。
  */
 export interface BubbleFactorTable {
+  /** アクション順（UTG→BB）。 */
   positions: Position[];
   /** ハンド開始時のスタック（bb）。positions と同順。 */
   stacks: number[];
@@ -27,7 +28,10 @@ function antePaid(state: BoardState, pos: Position): number {
 }
 
 export function bubbleFactorTable(state: BoardState): BubbleFactorTable | null {
-  const seats = state.seats;
+  // アクション順（UTG→BB）に並べる。AOF ではプッシャーは必ずコーラーより前の席。
+  const seats = state.seats
+    .filter((s) => s.state !== 'empty')
+    .sort((x, y) => POSITIONS.indexOf(x.pos) - POSITIONS.indexOf(y.pos));
   const n = seats.length;
   if (n < 2) return null;
   const positions = seats.map((s) => s.pos);
