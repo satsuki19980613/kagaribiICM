@@ -3,6 +3,7 @@ import { useState } from 'react';
 import type { SolveResultDto } from '../solverProtocol';
 import { evLossOf, headlineNode, verdictOf, type HeroAction } from '../records/model';
 import { ActionTree } from './ActionTree';
+import { BubbleFactors } from './BubbleFactors';
 import { Back } from './ui';
 
 /** pt の単位。表示はクラブ尺度に換算している（記録一覧で横比較するため）。 */
@@ -124,6 +125,8 @@ export function Result(props: {
         <span className="eyebrow">ACTION TREE</span>
         <ActionTree result={result} stacks={Object.fromEntries(state.seats.map((s) => [s.pos, s.stack]))} />
       </div>
+
+      <BubbleFactors state={state} heroPos={result.heroPos} />
 
       <div className="panel">
         <div className="panel-h">
