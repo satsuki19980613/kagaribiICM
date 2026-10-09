@@ -296,6 +296,7 @@ button.hc{cursor:pointer}
 .bft th{font-size:10px;font-weight:700;letter-spacing:.08em;color:var(--muted);padding:2px 0 4px;text-align:center}
 .bft th.me{color:var(--you-text)}
 .bft th.rh{width:21%;text-align:left;padding:0 0 0 2px}
+.bft th.corner{font-size:9px;font-weight:600;letter-spacing:0;color:var(--muted);vertical-align:bottom;padding-bottom:4px;white-space:nowrap}
 .bft th.rh span{display:block;font-size:11px;color:var(--ink)}
 .bft th.rh small{display:block;font-size:10px;font-weight:500;letter-spacing:0;color:var(--muted)}
 .bft tr.me th.rh{box-shadow:inset 3px 0 0 var(--you);padding-left:7px}

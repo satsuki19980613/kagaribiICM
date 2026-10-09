@@ -32,7 +32,7 @@ export function BubbleFactors(props: { state: BoardState; heroPos: string }): JS
     <div className="panel">
       <div className="panel-h">
         <span className="eyebrow">BUBBLE FACTOR</span>
-        <span className="rt">行＝本人 / 列＝相手</span>
+        <span className="rt">行＝判断する人 / 列＝相手</span>
       </div>
 
       {cur && curBf != null && (
@@ -55,8 +55,9 @@ export function BubbleFactors(props: { state: BoardState; heroPos: string }): JS
             </b>
           </div>
           <p className="bfd-t">
-            {pos[cur[0]]}（{bb(cur[0])}）が {pos[cur[1]]}（{bb(cur[1])}）とオールインで勝負すると、負けたときの損は勝ったときの得の{' '}
-            <b>{curBf.toFixed(2)} 倍</b>。五分の勝負を受けるには、チップだけなら 50% のところ{' '}
+            <b>{pos[cur[0]]}</b>（{bb(cur[0])}）が {pos[cur[1]]}（{bb(cur[1])}）とオールインになると、{pos[cur[0]]}{' '}
+            は負けたときの損が勝ったときの得の <b>{curBf.toFixed(2)} 倍</b>。{pos[cur[0]]} がプッシュするときも、
+            {pos[cur[1]]} のプッシュにコールするときも同じ値で、チップだけなら 50% のところ{' '}
             <b>{(breakEvenEquity(curBf) * 100).toFixed(0)}%</b> のエクイティが要ります。
           </p>
         </div>
@@ -65,7 +66,9 @@ export function BubbleFactors(props: { state: BoardState; heroPos: string }): JS
       <table className="bft">
         <thead>
           <tr>
-            <th className="rh" aria-label="本人＼相手" />
+            <th className="rh corner">
+              判断＼相手
+            </th>
             {pos.map((p, j) => (
               <th key={p} scope="col" className={j === heroIdx ? 'me' : ''}>
                 {p}
@@ -97,7 +100,7 @@ export function BubbleFactors(props: { state: BoardState; heroPos: string }): JS
                       className={on ? 'sel' : ''}
                       style={{ background: heatBg(v) }}
                       aria-pressed={on}
-                      aria-label={`${p} が ${q} と勝負: ${v.toFixed(2)}`}
+                      aria-label={`${p} が ${q} とオールイン: ${v.toFixed(2)}`}
                       onClick={() => setSel([i, j])}
                     >
                       {v.toFixed(2)}
@@ -116,7 +119,7 @@ export function BubbleFactors(props: { state: BoardState; heroPos: string }): JS
         <span>3.5+ 重い</span>
       </div>
       <p className="hint">
-        負けたときの ICM の損 ÷ 勝ったときの得。スタックはハンド開始時の値で、ポットの無いオールイン勝負として計算しています。セルを押すと詳しく表示します。
+        行の人が列の人とオールインになったときの、行の人にとっての重さです（負けたときの ICM の損 ÷ 勝ったときの得）。行の人がプッシュする側でもコールする側でも同じ値です。スタックはハンド開始時の値で、ポットの無い勝負として計算しています。セルを押すと詳しく表示します。
       </p>
     </div>
   );
