@@ -7,6 +7,16 @@ const heat = (bf: number): number => Math.max(0, Math.min(1, (bf - 1) / 2.5));
 const heatBg = (bf: number): string => `color-mix(in srgb, var(--cpu) ${Math.round(heat(bf) * 72)}%, transparent)`;
 const pct = (bf: number): string => (breakEvenEquity(bf) * 100).toFixed(0);
 
+/** 説明（文章・凡例）の開閉。閉じた状態が既定で、端末ごとに覚える。 */
+const HELP_KEY = 'kagaribi.bfHelp';
+function loadHelp(): boolean {
+  try {
+    return localStorage.getItem(HELP_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
 /**
  * 結果画面のバブルファクター表。行＝プッシャー（BB を除く）、列＝コーラー（UTG を除く）。AOF ではプッシャーは必ず
  * コーラーより前の席なので、行が列より後ろの組み合わせ（例 SB プッシュに UTG がコール）は
@@ -31,6 +41,16 @@ export function BubbleFactors(props: { state: BoardState; heroPos: string }): JS
     return best;
   }, [table, heroIdx]);
   const [sel, setSel] = useState<[number, number] | null>(null);
+  const [help, setHelp] = useState(loadHelp);
+  const toggleHelp = (): void => {
+    const next = !help;
+    setHelp(next);
+    try {
+      localStorage.setItem(HELP_KEY, next ? '1' : '0');
+    } catch {
+      /* 保存できなくても開閉はできる。 */
+    }
+  };
   if (!table) return null;
   const cur = sel ?? initial;
   const pos = table.positions;
@@ -71,12 +91,14 @@ export function BubbleFactors(props: { state: BoardState; heroPos: string }): JS
               必要 <b>{pct(cBf)}%</b>
             </span>
           </div>
-          <p className="bfd-t">
-            {pos[cur[0]]}（{bb(cur[0])}）のプッシュに {pos[cur[1]]}（{bb(cur[1])}）がコールしてオールインになる場面。
-            負けたときの損は勝ったときの得の、{pos[cur[0]]} は <b>{pBf.toFixed(2)} 倍</b>、{pos[cur[1]]} は{' '}
-            <b>{cBf.toFixed(2)} 倍</b>。チップだけならどちらも 50% のところ、{pos[cur[0]]} は <b>{pct(pBf)}%</b>、
-            {pos[cur[1]]} は <b>{pct(cBf)}%</b> のエクイティが要ります。
-          </p>
+          {help && (
+            <p className="bfd-t">
+              {pos[cur[0]]}（{bb(cur[0])}）のプッシュに {pos[cur[1]]}（{bb(cur[1])}）がコールしてオールインになる場面。
+              負けたときの損は勝ったときの得の、{pos[cur[0]]} は <b>{pBf.toFixed(2)} 倍</b>、{pos[cur[1]]} は{' '}
+              <b>{cBf.toFixed(2)} 倍</b>。チップだけならどちらも 50% のところ、{pos[cur[0]]} は <b>{pct(pBf)}%</b>、
+              {pos[cur[1]]} は <b>{pct(cBf)}%</b> のエクイティが要ります。
+            </p>
+          )}
         </div>
       )}
 
@@ -132,21 +154,28 @@ export function BubbleFactors(props: { state: BoardState; heroPos: string }): JS
         </tbody>
       </table>
 
-      <div className="bfl" aria-hidden="true">
-        <span className="bfl-key">
-          <i>PUSH</i>
-          <i>CALL</i>
-        </span>
-        <span className="bfl-txt">上＝プッシャー / 下＝コーラーの BF</span>
-      </div>
-      <div className="bfl" aria-hidden="true">
-        <span>1.0 軽い</span>
-        <i className="bfl-bar" />
-        <span>3.5+ 重い</span>
-      </div>
-      <p className="hint">
-        負けたときの ICM の損 ÷ 勝ったときの得。AOF ではプッシャーはコーラーより前の席なので、あり得ない組み合わせは「—」です。スタックはハンド開始時の値で、ポットの無い勝負として計算しています。セルを押すと詳しく表示します。
-      </p>
+      <button type="button" className={`bf-tg${help ? ' on' : ''}`} aria-expanded={help} onClick={toggleHelp}>
+        {help ? '見方を閉じる' : '見方を表示'}
+      </button>
+      {help && (
+        <>
+          <div className="bfl" aria-hidden="true">
+            <span className="bfl-key">
+              <i>PUSH</i>
+              <i>CALL</i>
+            </span>
+            <span className="bfl-txt">上＝プッシャー / 下＝コーラーの BF</span>
+          </div>
+          <div className="bfl" aria-hidden="true">
+            <span>1.0 軽い</span>
+            <i className="bfl-bar" />
+            <span>3.5+ 重い</span>
+          </div>
+          <p className="hint">
+            負けたときの ICM の損 ÷ 勝ったときの得。AOF ではプッシャーはコーラーより前の席なので、あり得ない組み合わせは「—」です。スタックはハンド開始時の値で、ポットの無い勝負として計算しています。セルを押すと詳しく表示します。
+          </p>
+        </>
+      )}
     </div>
   );
 }
