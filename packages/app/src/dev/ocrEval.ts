@@ -8,7 +8,7 @@
  * 色の変換や計算の Worker を通らないので、ここでしか見つからない差がある。
  *
  * 画像と正解は vite.config.ts の開発用ミドルウェア（/__ocr-eval/）が ocr-local/ から渡す。
- * URL に `?solve=0` を付けると計算を省く。
+ * URL に `?solve=0` を付けると計算を省く。`?set=web` は ocr-local/web/ の組を使う。
  */
 
 import type { GameMode } from '@kagaribi/core';
@@ -48,7 +48,8 @@ function downloadLink(name: string, text: string, type: string): void {
 }
 
 async function main(): Promise<void> {
-  const listing = (await (await fetch('/__ocr-eval/list')).json()) as Listing;
+  const set = new URLSearchParams(location.search).get('set') === 'web' ? '?set=web' : '';
+  const listing = (await (await fetch(`/__ocr-eval/list${set}`)).json()) as Listing;
   if (!listing.truth) {
     say('ocr-local/truth.json がありません。images/ にスクショ、truth.json に正解を置いてください。');
     return;
@@ -68,7 +69,7 @@ async function main(): Promise<void> {
     if (idx < 0) continue;
     say(`${frames + 1} / ${listing.truth.frames.length - missing.length}: ${t.file}`);
     try {
-      const blob = await (await fetch(`/__ocr-eval/image/${idx}`)).blob();
+      const blob = await (await fetch(`/__ocr-eval/image/${idx}${set}`)).blob();
       const file = new File([blob], t.file, { type: blob.type });
       const digest = pixelDigest(await decodeToRgba(file));
       digests[t.file] = digest;

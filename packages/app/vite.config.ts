@@ -28,9 +28,9 @@ function siteHeaders(): Record<string, string> {
 function ocrEvalDev(): Plugin {
   const dir = fileURLToPath(new URL('../../ocr-local/', import.meta.url));
   const types: Record<string, string> = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp' };
-  const readJson = (name: string): unknown => {
+  const readJson = (base: string, name: string): unknown => {
     try {
-      return JSON.parse(readFileSync(dir + name, 'utf8'));
+      return JSON.parse(readFileSync(base + name, 'utf8'));
     } catch {
       return null;
     }
@@ -40,12 +40,15 @@ function ocrEvalDev(): Plugin {
     apply: 'serve',
     configureServer(server) {
       server.middlewares.use('/__ocr-eval', (req, res) => {
-        const imgDir = dir + 'images/';
+        // 画像の組は決まった名前だけ（既定の ocr-local/ と、ネットから集めた一時的な ocr-local/web/）。
+        const query = new URLSearchParams((req.url ?? '').split('?')[1] ?? '');
+        const base = query.get('set') === 'web' ? dir + 'web/' : dir;
+        const imgDir = base + 'images/';
         const files = existsSync(imgDir) ? readdirSync(imgDir).filter((f) => /\.(png|jpe?g|webp)$/i.test(f)).sort() : [];
         const url = (req.url ?? '').split('?')[0]!;
         if (url === '/list') {
           res.setHeader('Content-Type', 'application/json; charset=utf-8');
-          res.end(JSON.stringify({ files, truth: readJson('truth.json'), nodeRun: readJson('report.json') }));
+          res.end(JSON.stringify({ files, truth: readJson(base, 'truth.json'), nodeRun: readJson(base, 'report.json') }));
           return;
         }
         const m = /^\/image\/(\d{1,6})$/.exec(url);

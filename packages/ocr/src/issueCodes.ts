@@ -51,6 +51,8 @@ const RULES: readonly Rule[] = [
   { code: 'display_mode_chips', test: (m) => /チップ表示です/.test(m) },
   // spotReconstruction.ts detectOutOfScope: '${pos} がレイズ（非オールイン）しています...'
   { code: 'out_of_scope_raise', test: (m) => /がレイズ（非オールイン）/.test(m) },
+  // 同: '${pos} のレイズより前の席（自分）の判断は扱えません…' / '自分のレイズの後にオールインが入っていません…'
+  { code: 'out_of_scope_raise', test: (m) => /のレイズより前の席|自分のレイズの後にオールインが入っていません/.test(m) },
   // spotReconstruction.ts detectOutOfScope: '${pos} がコール（リンプ/非オールインへのコール）しています...'
   { code: 'out_of_scope_limp', test: (m) => /がコール（リンプ/.test(m) },
   // spotReconstruction.ts detectOutOfScope: '${pos} に未分類のベット ...bb があります（要手入力確認）'

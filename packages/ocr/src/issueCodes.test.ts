@@ -28,6 +28,13 @@ describe('classifyIssueCode — 既存の実メッセージ文字列を期待コ
     ).toBe('out_of_scope_raise');
   });
 
+  it('spotReconstruction.ts: レイズはあるが扱えない場面（自分がレイズしただけ／自分がレイズより前の席）', () => {
+    expect(classifyIssueCode('自分のレイズの後にオールインが入っていません（判断が残っていない画面です）')).toBe('out_of_scope_raise');
+    expect(classifyIssueCode('HJ のレイズより前の席（自分）の判断は扱えません（行動マークの読み違いかもしれません）')).toBe(
+      'out_of_scope_raise',
+    );
+  });
+
   it('spotReconstruction.ts: リンプ/非オールインへのコール', () => {
     expect(classifyIssueCode('BU がコール（リンプ/非オールインへのコール）しています（push/fold では扱えません）')).toBe(
       'out_of_scope_limp',

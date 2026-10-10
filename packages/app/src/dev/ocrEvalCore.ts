@@ -30,7 +30,8 @@ export interface TruthFrame {
   /** 集計の切り口（theme / device / quality など自由）。 */
   readonly tags?: Record<string, string>;
   readonly gameMode?: GameMode;
-  readonly displayMode: 'bb' | 'chips';
+  /** 表示モード。対象外の画面（ロビーや図など）では書かない（＝比べない）。 */
+  readonly displayMode?: 'bb' | 'chips';
   readonly pot?: number;
   readonly heroHand?: string;
   readonly blindChips?: { readonly sb: number; readonly bb: number; readonly ante: number };
@@ -81,12 +82,14 @@ export function checkFrame(t: TruthFrame, r: OcrPrefillResult, size: { w: number
   if (t.expect.ok) {
     add('結末', 'ok', r.ok ? 'ok' : `棄却(${codes.join(',') || '理由なし'})`, r.ok);
   } else {
-    const hit = !r.ok && codes.includes(t.expect.code);
+    // code が '*' なら、理由は問わず弾けばよい（卓の画面ですらない画像など）。
+    const hit = !r.ok && (t.expect.code === '*' || codes.includes(t.expect.code));
     add('結末', `棄却(${t.expect.code})`, r.ok ? 'ok' : `棄却(${codes.join(',') || '理由なし'})`, hit);
   }
 
   const ro = r.readout;
   if (!ro) return out;
+  if (t.displayMode === undefined) return out;
   add('表示モード', t.displayMode, ro.displayMode ?? '不明', (ro.displayMode ?? 'bb') === t.displayMode);
   // チップ表示は取り込み対象外（早期に弾く）ので、席の中身は比べない。
   if (t.displayMode !== 'bb') return out;
