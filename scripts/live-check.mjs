@@ -88,6 +88,10 @@ for (const a of assets) {
     continue;
   }
   scanned++;
+  // CSP が data: のフォントを許していないのに CSS に埋め込まれていると、ブラウザが止めて代わりのフォントになる。
+  if (a.endsWith('.css') && !(csp['font-src'] || []).includes('data:') && /url\(["']?data:font\//.test(r.text)) {
+    fail(`${a} に data: のフォントが埋め込まれている（font-src で止まる）`);
+  }
   for (const m of r.text.matchAll(/https?:\/\/([a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/g)) {
     const host = m[1].toLowerCase();
     if (host !== HOST && !KNOWN_STRINGS.has(host)) unknown.set(host, a);

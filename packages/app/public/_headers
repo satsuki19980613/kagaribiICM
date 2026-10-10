@@ -12,7 +12,7 @@
 /manifest.webmanifest
   Cache-Control: no-cache
 
-# セキュリティヘッダー。全ページ共通。`npm run preview` では付かない（Cloudflare が _headers を読んで付ける）。
+# セキュリティヘッダー。全ページ共通。`npm run preview` も同じ値を付ける（vite.config.ts）。
 # default-src 'self'：このサイト以外からは何も読み込まず、このサイト以外へは何も送れない（フォントもこのサイトから配る。src/fonts.css）。
 # style-src 'unsafe-inline'：画面が要素ごとの style 属性（使い方ガイドの拡大位置・バブルファクター表の色）を書くため。スクリプトは 'self' だけ。
 # connect-src の data:：Vite が小さな `?url` アセット（求解テーブルの *.meta.json）を data: URL としてワーカーに埋め込み、

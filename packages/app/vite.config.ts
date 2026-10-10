@@ -1,6 +1,23 @@
+import { readFileSync } from 'node:fs';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
+
+/** public/_headers（Cloudflare が付ける応答ヘッダ）の全ページ共通ぶん。`npm run preview` でも同じ値を付けて、CSP で止まるものを手元で見つける。 */
+function siteHeaders(): Record<string, string> {
+  const headers: Record<string, string> = {};
+  let inAll = false;
+  for (const line of readFileSync(new URL('./public/_headers', import.meta.url), 'utf8').split(/\r?\n/)) {
+    if (line.trim() === '' || line.trimStart().startsWith('#')) continue;
+    if (!/^\s/.test(line)) {
+      inAll = line.trim() === '/*';
+      continue;
+    }
+    const i = line.indexOf(':');
+    if (inAll && i > 0) headers[line.slice(0, i).trim()] = line.slice(i + 1).trim();
+  }
+  return headers;
+}
 
 // base は相対: ローカル配信（npm start）でも GitHub Pages のサブパス配信でも同じビルドが動く。
 export default defineConfig({
@@ -61,11 +78,12 @@ export default defineConfig({
   worker: { format: 'es' },
   assetsInclude: ['**/*.bin'],
   // 本体チャンクの大半は OCR テンプレート（JSON）。分割しても初回に必ず要るのでまとめて置く。
-  build: { chunkSizeWarningLimit: 1200 },
+  // フォントは必ず別ファイルにする（CSS に埋め込まれた data: のフォントは、public/_headers の font-src 'self' で止まる）。
+  build: { chunkSizeWarningLimit: 1200, assetsInlineLimit: (file) => (/\.woff2?$/.test(file) ? false : undefined) },
   server: {
     port: 5180,
     // solver/artifacts の .bin/.meta を ?url で参照するためモノレポ上位を許可。
     fs: { allow: ['../..'] },
   },
-  preview: { port: 4180 },
+  preview: { port: 4180, headers: siteHeaders() },
 });
