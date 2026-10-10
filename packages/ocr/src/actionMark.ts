@@ -35,6 +35,10 @@
  *         プレート内 meanSat はフォールド 17.6〜46.1 / 能動 61.2〜79.2 で重なりが無い（差 15.1）。
  *         背景がたまたま語形に似ても、彩度まで一致しなければ弾ける。
  * どれかを外したら 'none'（＝まだ行動していない）を高信頼で返す。
+ *
+ * ## 背景が明るい卓（2026-10-10 追加）
+ * 手順 1 の枠線は、背景が白っぽいテーマでは背景とつながって見つからない。そのときだけ、
+ * プレートの地の紫から矩形を取り直して同じゲートにかける（`locateMarkPlatesByBody`）。
  */
 
 import type { Gray, Read, Rect, SeatAction } from './types.js';
@@ -141,6 +145,87 @@ function longestRun(mask: Gray, y: number): { len: number; start: number } {
   return { len: best, start: bestStart };
 }
 
+/** マスクの行ランから取ったプレートの横幅と上端（マスク座標）。 */
+interface PlateSpan {
+  readonly xs: number;
+  readonly xe: number;
+  readonly yTop: number;
+}
+
+/** 手順 1〜4（行ラン → 固まり → 上下のペア）。妥当な行が無ければ null。 */
+function plateSpanFromMask(mask: Gray, plateW: number, opts: ActionMarkOptions): PlateSpan | null {
+  const minLen = (opts.runLoFactor ?? 0.70) * plateW;
+  const maxLen = (opts.runHiFactor ?? 1.40) * plateW;
+  const hOverW = opts.plateHOverW ?? 0.36;
+
+  // 1. 枠線候補の行。
+  const rows: { y: number; len: number; start: number }[] = [];
+  for (let y = 0; y < mask.h; y++) {
+    const r = longestRun(mask, y);
+    if (r.len >= minLen && r.len <= maxLen) rows.push({ y, len: r.len, start: r.start });
+  }
+  if (rows.length === 0) return null;
+
+  // 2. 縦に連続する行を固まりにまとめる（枠線は数 px の厚みを持つ）。
+  const groups: { y0: number; y1: number; xs: number; xe: number }[] = [];
+  for (const r of rows) {
+    const last = groups[groups.length - 1];
+    if (last && r.y - last.y1 <= 2) {
+      last.y1 = r.y;
+      last.xs = Math.min(last.xs, r.start);
+      last.xe = Math.max(last.xe, r.start + r.len);
+    } else {
+      groups.push({ y0: r.y, y1: r.y, xs: r.start, xe: r.start + r.len });
+    }
+  }
+
+  // 3. 上下枠線のペアを、間隔が期待値に最も近いもので選ぶ。
+  let yTop = 0, xs = 0, xe = 0;
+  let bestErr = Infinity;
+  for (let i = 0; i < groups.length; i++)
+    for (let j = i + 1; j < groups.length; j++) {
+      const a = groups[i]!, b = groups[j]!;
+      const w = Math.max(a.xe, b.xe) - Math.min(a.xs, b.xs);
+      const expect = hOverW * w;
+      const err = Math.abs(b.y1 - a.y0 - expect);
+      if (err <= (opts.plateHTolerance ?? 0.45) * expect && err < bestErr) {
+        bestErr = err;
+        yTop = a.y0;
+        xs = Math.min(a.xs, b.xs); xe = Math.max(a.xe, b.xe);
+      }
+    }
+  if (bestErr === Infinity) {
+    // 4. 妥当なペアが無い: 最も長いランの固まりを 1 本の枠線として使う。
+    let g = groups[0]!;
+    for (const c of groups) if (c.xe - c.xs > g.xe - g.xs) g = c;
+    xs = g.xs; xe = g.xe;
+    const h = Math.round(hOverW * (xe - xs));
+    yTop = (g.y0 + g.y1) / 2 < mask.h / 2 ? g.y0 : g.y1 - h;
+  }
+  return { xs, xe, yTop };
+}
+
+/**
+ * 5. 上枠を基準に、プレートの**既定のアスペクト**へ矩形を正規化する。
+ *    プレートは固定サイズのアセットなので、下枠の実測（アバターの髪や光に汚れて数 px 揺れる）
+ *    より h/w=0.36 を信じるほうが正確で、なにより**全候補・全テンプレで縦横比が一定**になる。
+ *    NCC は正規化後の像を比べるので、ここが揺れると同じ語でも幅が 89px と 79px に分かれて
+ *    一致率が落ちる（実測: TL のレイズ/コールで発生）。
+ *
+ * 正規化した矩形が帯に収まらないなら null を返す（クランプしない）。クランプすると
+ * 「見つけた枠線と繋がっていない・縦横比も崩れた矩形」を返してしまい、下流の Otsu と NCC が
+ * 黙って別物を見る。帯はプレートの約 2.4 倍あるので、収まらないのは帯の位置自体がずれて
+ * いる（＝この席の読みを信じるべきでない）ケース。'none' に落ちるほうが安全。
+ */
+function plateFromSpan(img: Rgba, x0: number, y0: number, mask: Gray, span: PlateSpan, hOverW: number): MarkPlate | null {
+  const { xs, xe, yTop } = span;
+  const w = xe - xs;
+  const h = Math.round(hOverW * w);
+  if (w <= 0 || h <= 0 || xs < 0 || yTop < 0 || xs + w > mask.w || yTop + h > mask.h) return null;
+  const rect: Rect = { x: x0 + xs, y: y0 + yTop, w, h };
+  return { rect, meanSat: meanSaturation(img, rect) };
+}
+
 /**
  * 探索帯の中からプレート矩形を取る。無ければ null。
  *
@@ -172,71 +257,85 @@ export function locateMarkPlate(img: Rgba, searchRect: Rect, opts: ActionMarkOpt
   });
   if (mask.w === 0 || mask.h === 0) return null;
   const plateW = (opts.plateWFrac ?? 0.054) * img.w;
-  const minLen = (opts.runLoFactor ?? 0.70) * plateW;
-  const maxLen = (opts.runHiFactor ?? 1.40) * plateW;
-  const hOverW = opts.plateHOverW ?? 0.36;
-
-  // 1. 枠線候補の行。
-  const rows: { y: number; len: number; start: number }[] = [];
-  for (let y = 0; y < mask.h; y++) {
-    const r = longestRun(mask, y);
-    if (r.len >= minLen && r.len <= maxLen) rows.push({ y, len: r.len, start: r.start });
-  }
-  if (rows.length === 0) return null;
-
-  // 2. 縦に連続する行を固まりにまとめる（枠線は数 px の厚みを持つ）。
-  const groups: { y0: number; y1: number; xs: number; xe: number }[] = [];
-  for (const r of rows) {
-    const last = groups[groups.length - 1];
-    if (last && r.y - last.y1 <= 2) {
-      last.y1 = r.y;
-      last.xs = Math.min(last.xs, r.start);
-      last.xe = Math.max(last.xe, r.start + r.len);
-    } else {
-      groups.push({ y0: r.y, y1: r.y, xs: r.start, xe: r.start + r.len });
-    }
-  }
-
-  // 3. 上下枠線のペアを、間隔が期待値に最も近いもので選ぶ。
-  let yTop = 0, yBot = 0, xs = 0, xe = 0;
-  let bestErr = Infinity;
-  for (let i = 0; i < groups.length; i++)
-    for (let j = i + 1; j < groups.length; j++) {
-      const a = groups[i]!, b = groups[j]!;
-      const w = Math.max(a.xe, b.xe) - Math.min(a.xs, b.xs);
-      const expect = hOverW * w;
-      const err = Math.abs(b.y1 - a.y0 - expect);
-      if (err <= (opts.plateHTolerance ?? 0.45) * expect && err < bestErr) {
-        bestErr = err;
-        yTop = a.y0; yBot = b.y1;
-        xs = Math.min(a.xs, b.xs); xe = Math.max(a.xe, b.xe);
-      }
-    }
-  if (bestErr === Infinity) {
-    // 4. 妥当なペアが無い: 最も長いランの固まりを 1 本の枠線として使う。
-    let g = groups[0]!;
-    for (const c of groups) if (c.xe - c.xs > g.xe - g.xs) g = c;
-    xs = g.xs; xe = g.xe;
-    const h = Math.round(hOverW * (xe - xs));
-    if ((g.y0 + g.y1) / 2 < mask.h / 2) { yTop = g.y0; yBot = g.y0 + h; }
-    else { yBot = g.y1; yTop = g.y1 - h; }
-  }
-  // 5. 上枠を基準に、プレートの**既定のアスペクト**へ矩形を正規化する。
-  //    プレートは固定サイズのアセットなので、下枠の実測（アバターの髪や光に汚れて数 px 揺れる）
-  //    より h/w=0.36 を信じるほうが正確で、なにより**全候補・全テンプレで縦横比が一定**になる。
-  //    NCC は正規化後の像を比べるので、ここが揺れると同じ語でも幅が 89px と 79px に分かれて
-  //    一致率が落ちる（実測: TL のレイズ/コールで発生）。yBot は妥当性検査にだけ使う。
-  void yBot;
-  const w = xe - xs;
-  const h = Math.round(hOverW * w);
-  // 正規化した矩形が帯に収まらないなら null を返す（クランプしない）。クランプすると
-  // 「見つけた枠線と繋がっていない・縦横比も崩れた矩形」を返してしまい、下流の Otsu と NCC が
-  // 黙って別物を見る。帯はプレートの約 2.4 倍あるので、収まらないのは帯の位置自体がずれて
-  // いる（＝この席の読みを信じるべきでない）ケース。'none' に落ちるほうが安全。
-  if (w <= 0 || h <= 0 || xs < 0 || yTop < 0 || xs + w > mask.w || yTop + h > mask.h) return null;
-  const rect: Rect = { x: x0 + xs, y: y0 + yTop, w, h };
-  return { rect, meanSat: meanSaturation(img, rect) };
+  const span = plateSpanFromMask(mask, plateW, opts);
+  if (!span) return null;
+  return plateFromSpan(img, x0, y0, mask, span, opts.plateHOverW ?? 0.36);
 }
+
+/** プレートの地の紫（B > R > G）のマスク。帯は画像内に切り詰める（`whiteMask` と同じ原点）。 */
+function purpleBodyMask(img: Rgba, rect: Rect): Gray {
+  const x0 = Math.max(0, Math.floor(rect.x));
+  const y0 = Math.max(0, Math.floor(rect.y));
+  const x1 = Math.min(img.w, Math.floor(rect.x) + rect.w);
+  const y1 = Math.min(img.h, Math.floor(rect.y) + rect.h);
+  const w = Math.max(0, x1 - x0), h = Math.max(0, y1 - y0);
+  const data = new Uint8Array(w * h);
+  for (let y = 0; y < h; y++)
+    for (let x = 0; x < w; x++) {
+      const s = ((y0 + y) * img.w + (x0 + x)) * 4;
+      const R = img.data[s]!, G = img.data[s + 1]!, B = img.data[s + 2]!;
+      if (R - G >= 12 && B - R >= 8 && B - G >= 30) data[y * w + x] = 255;
+    }
+  return { w, h, data };
+}
+
+/**
+ * 枠線ではなく**プレートの地の紫**から矩形を取る（`locateMarkPlate` の予備）。
+ *
+ * 枠線は「明るい低彩度」で探すので、**背景が明るい卓のテーマ**（白っぽい空・建物の壁）では
+ * 枠線のランが背景とつながって帯の端まで伸び、プレート幅の窓から外れて見つからない
+ * （さつき報告 2026-10-10: 会社の街並みのテーマで、上の席の「フォールド」と右上の「レイズ」が
+ * どちらも読めず、レイズの 2 BB が「未分類のベット」として弾かれた）。プレートの地は能動も
+ * フォールドも紫（実測: 能動 ≈ (110,40,159)、フォールド ≈ (64,35,88)。どちらも B > R > G）で、
+ * 文字の上と下に**地だけの行**が横一直線に走る。これを枠線の代わりに使えば、同じ手順
+ * （行ラン → 固まり → 上下のペア）で矩形が取れる。
+ *
+ * 取れるのは枠の**内側**で、テンプレを切り出した枠線基準の矩形とは枠の厚みぶんずれる。NCC は
+ * 切り出し位置に敏感（実測: 上端が 4 px ずれると「フォールド」0.79 → 0.10、外へ広げすぎると
+ * 「コール」に化ける）なので、矩形を 1 つに決め打ちせず、枠の厚みの範囲で**数通りの候補**を返す。
+ * 実測でいちばん合うのは「横は内側のまま（〜わずかに内）、上端だけ枠の厚み（幅の 3〜4.5%）上げた」
+ * 矩形で、能動（レイズ 0.75）もフォールド（0.79）も同じだった。呼び側は全候補を同じゲートにかけ、
+ * 通ったうち最も一致したものを採る。
+ */
+export function locateMarkPlatesByBody(img: Rgba, searchRect: Rect, opts: ActionMarkOptions = {}): MarkPlate[] {
+  const x0 = Math.max(0, Math.floor(searchRect.x));
+  const y0 = Math.max(0, Math.floor(searchRect.y));
+  const mask = purpleBodyMask(img, searchRect);
+  if (mask.w === 0 || mask.h === 0) return [];
+  const plateW = (opts.plateWFrac ?? 0.054) * img.w;
+  const inner = plateSpanFromMask(mask, plateW, opts);
+  if (!inner) return [];
+  const innerW = inner.xe - inner.xs;
+  const hOverW = opts.plateHOverW ?? 0.36;
+  // 彩度は**枠を含む外側の矩形**で測る。彩度ゲートの帯（fold 25〜49 / 能動 68 以上）は枠線基準の
+  // 矩形で較正してあり、枠（低彩度）を外した内側だけで測ると値が上がって、死角（49〜68）の
+  // 装飾が能動の帯に入ってしまう。
+  const border = Math.round(BODY_BORDER_FRAC * innerW);
+  const outerW = innerW + 2 * border;
+  const meanSat = meanSaturation(img, {
+    x: x0 + inner.xs - border,
+    y: y0 + inner.yTop - border,
+    w: outerW,
+    h: Math.round(hOverW * outerW),
+  });
+  const out: MarkPlate[] = [];
+  for (const insetFrac of BODY_X_INSETS)
+    for (const topFrac of BODY_TOP_OUTSETS) {
+      const inset = Math.round(insetFrac * innerW);
+      const top = Math.round(topFrac * innerW);
+      const span: PlateSpan = { xs: inner.xs + inset, xe: inner.xe - inset, yTop: inner.yTop - top };
+      const plate = plateFromSpan(img, x0, y0, mask, span, hOverW);
+      if (plate) out.push({ rect: plate.rect, meanSat });
+    }
+  return out;
+}
+
+/** 枠の厚み（地の幅比）。彩度を測る外側の矩形に使う。 */
+const BODY_BORDER_FRAC = 0.03;
+/** 地の矩形を横に内へ寄せる量（地の幅比）の候補。 */
+const BODY_X_INSETS = [0, 0.015] as const;
+/** 地の矩形の上端を枠線まで上げる量（地の幅比）の候補。枠の厚みは幅の 3〜4.5%。 */
+const BODY_TOP_OUTSETS = [0.03, 0.045] as const;
 
 /**
  * プレート矩形 → 文字インクマスク（Otsu, 明るい側が前景）。
@@ -289,17 +388,14 @@ export function recognizeMark(
   return recognizeMarkDiag(img, searchRect, templates, opts).read;
 }
 
-/** `recognizeMark` の内訳付き版（テンプレ生成・しきい値較正のため export する）。 */
-export function recognizeMarkDiag(
+/** プレート矩形 1 つを 3 重ゲート（インク率・NCC・彩度）にかける。 */
+function judgePlate(
   img: Rgba,
-  searchRect: Rect,
+  plate: MarkPlate,
   templates: readonly Template[],
-  opts: ActionMarkOptions = {},
+  opts: ActionMarkOptions,
 ): { read: Read<SeatAction>; diag: MarkDiag } {
   const none: Read<SeatAction> = { value: 'none', conf: 0.9 };
-  const plate = locateMarkPlate(img, searchRect, opts);
-  if (!plate) return { read: none, diag: { plate: null, ink: 0, label: '', rawConf: 0, rejected: 'plate' } };
-
   const mask = markInkMask(img, plate.rect);
   const ink = inkFraction(mask);
   const m = bestMatch(normMark(mask), templates);
@@ -323,4 +419,30 @@ export function recognizeMarkDiag(
     : sat >= (opts.activeSatMin ?? 68);
   if (!satOk) return { read: none, diag: { ...diagBase, rejected: 'sat' } };
   return { read: { value: action, conf }, diag: diagBase };
+}
+
+/**
+ * `recognizeMark` の内訳付き版（テンプレ生成・しきい値較正のため export する）。
+ *
+ * 枠線から矩形を取り（`locateMarkPlate`）、それでマークを読めなかったときだけ、プレートの地の紫
+ * から取った矩形の候補（`locateMarkPlatesByBody`）を同じゲートにかけ、通ったうち最も一致したものを採る。枠線で読めたフレームの
+ * 結果は変わらない。予備の矩形もゲートを全部通らなければ、従来どおり 'none'。
+ */
+export function recognizeMarkDiag(
+  img: Rgba,
+  searchRect: Rect,
+  templates: readonly Template[],
+  opts: ActionMarkOptions = {},
+): { read: Read<SeatAction>; diag: MarkDiag } {
+  const plate = locateMarkPlate(img, searchRect, opts);
+  const first = plate
+    ? judgePlate(img, plate, templates, opts)
+    : { read: { value: 'none' as const, conf: 0.9 }, diag: { plate: null, ink: 0, label: '', rawConf: 0, rejected: 'plate' as const } };
+  if (first.read.value !== 'none') return first;
+  let best = first;
+  for (const body of locateMarkPlatesByBody(img, searchRect, opts)) {
+    const r = judgePlate(img, body, templates, opts);
+    if (r.read.value !== 'none' && (best.read.value === 'none' || r.read.conf > best.read.conf)) best = r;
+  }
+  return best;
 }

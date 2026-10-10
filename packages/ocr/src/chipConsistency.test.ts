@@ -302,4 +302,29 @@ describe('未読席の扱い（さつき指示 2026-09-12: 1席は補正・2席�
     // 読めた席の値は一切触らない。
     expect(out.seats.map((s) => s.stack.value)).toEqual(input.seats.map((s) => s.stack.value));
   });
+  describe('レイズ／コールが場にある（オールイン無し）', () => {
+    // 5 席・理論 93.75bb。UTG が 2bb にレイズ（表示スタックは 2 減る）。ポット = 1.25 + 0.5 + 1 + 2 = 4.75。
+    const raised: StackSpec[] = [
+      { id: 'UTG', v: 9.5, bet: 2, act: 'raise' }, { id: 'CO', v: 31.9, act: 'fold' }, { id: 'BU', v: 22.3, c: 0.6 },
+      { id: 'SB', v: 14.4, bet: 0.5 }, { id: 'BB', v: 10.9, bet: 1 },
+    ];
+
+    it('レイズ額を場のチップに数えるので、正しく読めたスタックを書き換えない', () => {
+      const { reads: out, result } = applyChipConsistency(reads(raised, true, 4.8));
+      expect(result.mode).toBe('consistent');
+      expect(out.seats.map((s) => s.stack.value)).toEqual([9.5, 31.9, 22.3, 14.4, 10.9]);
+      // ポットは計算値（アンティ＋ベットの合計）に置き換える。
+      expect(out.pot.value).toBeCloseTo(4.75, 2);
+    });
+
+    it('読んだベットの合計がポットと合わなければ、何も補正しない', () => {
+      // レイズ額を読み落とした（bet 0）: 計算ポット 2.75 ≠ 読んだポット 4.8。
+      const missed = raised.map((s) => (s.id === 'UTG' ? { ...s, bet: 0 } : s));
+      const r = reads(missed, true, 4.8);
+      const { reads: out, result } = applyChipConsistency(r);
+      expect(result.mode).toBe('voluntary-bet-skip');
+      expect(result.applied).toBe(false);
+      expect(out).toBe(r);
+    });
+  });
 });

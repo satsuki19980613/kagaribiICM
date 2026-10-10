@@ -77,6 +77,7 @@ export type ChipCheckMode =
   | 'allin-bet-underread' // オールイン: 計算ポット<OCR（ベット読み落とし疑い）→ OCR 保持
   | 'allin-unread-skip' // オールイン: 当該席のベット未読でポット計算不可（保留）
   | 'multi-unreadable-skip' // 未読 2 席以上で一意に解けず
+  | 'voluntary-bet-skip' // レイズ／コールが場にあり、読んだベットの合計がポットと合わない（保留）
   | 'not-club-skip' // クラブマッチの総チップと大きく食い違う＝棄却（別モード or 重大誤読）
   | 'large-delta-skip'; // 差が大きすぎて未補正
 
@@ -159,10 +160,6 @@ export function applyChipConsistency(
   const totalBbTheory = totalBbFromBbChips(bc.bb, totalChips); // 選択モードの総チップ / bb
   const anteBb = bc.ante / bc.bb;
   const deadPot = anteContribution(reads, players, anteBb) + SB_BB + BB_BB;
-  // オールイン無しのプリフロップ（＝受理対象の push/fold 局面）のポットはデッドポットに等しい。
-  // OCR 中央ポットの読みでなく**計算値**を採用（さつき指摘: ポットは人数×アンティ+SB+BB で厳密）。
-  const potFixed = { value: round2(deadPot), conf: 0.95 } as const;
-
   const allins = occ.filter((s) => Number.isFinite(s.stack.value) && s.stack.value < ALLIN_STACK);
   if (allins.length > 0) {
     // Phase 4: オールイン在席（さつき決定 2026-09-09）。
@@ -225,6 +222,32 @@ export function applyChipConsistency(
     };
   }
 
+  // レイズ／コールのマークがある席（オールインではない）: 場にブラインド以外のチップが出ている。
+  // その分を数えないと、レイズ額がそのまま「合計の不足」に見えて、正しく読めたスタックを
+  // 書き換えてしまう（実測 2026-10-10: HJ の 2 BB レイズで、hero の 95.9bb が 97.8bb に化けた）。
+  // 場のチップは「アンティ＋読んだベットの合計」で、オールインのときと同じ式。ベットの読み落としが
+  // あると過小になるので、**読んだポットと一致したときだけ**使い、一致しなければ何も補正しない。
+  let tablePot = deadPot;
+  if (occ.some((s) => s.action.value === 'raise' || s.action.value === 'call')) {
+    const betSum = occ.reduce((a, s) => a + (Number.isFinite(s.bet.value) ? s.bet.value : 0), 0);
+    const computedPot = round2(anteContribution(reads, players, anteBb) + betSum);
+    const potRead = reads.pot.value;
+    if (!(Number.isFinite(potRead) && Math.abs(computedPot - potRead) <= POT_TOL)) {
+      return {
+        reads,
+        result: {
+          applied: false, mode: 'voluntary-bet-skip', totalBbTheory, potComputed: computedPot,
+          ...(Number.isFinite(potRead) ? { potRead } : {}),
+          notes: [`raise/call on table; computed pot ${computedPot} vs OCR ${Number.isFinite(potRead) ? potRead : 'NaN'} — no stack correction`],
+        },
+      };
+    }
+    tablePot = computedPot;
+  }
+  // オールイン無しのプリフロップのポットは、場のチップ（デッドポット＋レイズ／コール分）に等しい。
+  // OCR 中央ポットの読みでなく**計算値**を採用（さつき指摘: ポットは人数×アンティ+SB+BB で厳密）。
+  const potFixed = { value: round2(tablePot), conf: 0.95 } as const;
+
   const readable = occ.filter((s) => Number.isFinite(s.stack.value));
   const unreadable = occ.filter((s) => !Number.isFinite(s.stack.value));
   const readableSum = readable.reduce((a, s) => a + s.stack.value, 0);
@@ -232,7 +255,7 @@ export function applyChipConsistency(
   // 1 席だけ未読 → 保存則から復元。
   if (unreadable.length === 1) {
     // 復元値も画面と同じ 0.1 刻みに載せる（他席の丸め残差ぶん端数が乗るため）。
-    const recovered = snapDisplay(totalBbTheory - (readableSum + deadPot));
+    const recovered = snapDisplay(totalBbTheory - (readableSum + tablePot));
     if (recovered > CONSISTENT_TOL && recovered < totalBbTheory) {
       const target = unreadable[0]!;
       const seats = reads.seats.map((s): RawSeatRead =>
@@ -251,7 +274,7 @@ export function applyChipConsistency(
     // 未読席が差分を吸収する構造上、取り違えはここでしか顔を出さない。超過が NOT_CLUB_FRAC 以上なら
     // 「モード取り違えの疑い」を立てる（例: rank-3 を選んだままクラブのスクショを入れた）。
     // 値は触らず、席は未読のまま下流へ（確認画面で修正を促す）。
-    const readTotal = round2(readableSum + deadPot);
+    const readTotal = round2(readableSum + tablePot);
     const excess = readTotal - totalBbTheory;
     return {
       reads,
@@ -267,7 +290,7 @@ export function applyChipConsistency(
   }
 
   // 全席読めた → 差分を最低信頼席で調整。
-  const totalBbRead = round2(readableSum + deadPot);
+  const totalBbRead = round2(readableSum + tablePot);
   const delta = round2(totalBbTheory - totalBbRead);
   // 表示丸めで説明できる範囲は「一致」。ここを席数に比例させないと、正しい読みを補正してしまう。
   const tol = displayTolerance(readable.length);

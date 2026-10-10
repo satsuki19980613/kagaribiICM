@@ -15,6 +15,7 @@ import type { Rect } from './types.js';
 import type { Template } from './match.js';
 import {
   locateMarkPlate,
+  locateMarkPlatesByBody,
   markInkMask,
   normMark,
   recognizeMark,
@@ -224,6 +225,60 @@ describe('recognizeMark', () => {
     const sat = meanSaturation(img, locateMarkPlate(img, ZONE, OPTS)!.rect);
     expect(sat).toBeGreaterThan(49);
     expect(sat).toBeLessThan(68);
+    expect(recognizeMark(img, ZONE, templates, OPTS).value).toBe('none');
+  });
+});
+
+describe('明るい背景の卓（枠線が背景とつながる）', () => {
+  /** 白っぽい空のような背景（明るい低彩度＝枠線と同じマスクに乗る）。 */
+  function bright(): Uint8Array {
+    const data = new Uint8Array(W * H * 4);
+    for (let i = 0; i < W * H; i++) {
+      data[i * 4] = 222; data[i * 4 + 1] = 218; data[i * 4 + 2] = 207; data[i * 4 + 3] = 255;
+    }
+    return data;
+  }
+
+  it('枠線からは矩形が取れない（ランが帯の端まで伸びる）', () => {
+    const img = renderPlate(WORD_FOLD, FOLD, PLATE, bright());
+    const { read } = recognizeMarkDiag(img, ZONE, templates, { ...OPTS, plateMinCh: 100 });
+    // 予備（地の紫）で読めているので、枠線だけの結果は locateMarkPlate で確かめる。
+    expect(read.value).toBe('fold');
+    expect(locateMarkPlate(img, ZONE, OPTS)).toBeNull();
+  });
+
+  it('地の紫から矩形の候補を取り、フォールドもレイズも読める', () => {
+    const fold = renderPlate(WORD_FOLD, FOLD, PLATE, bright());
+    const raise = renderPlate(WORD_RAISE, ACTIVE, PLATE, bright());
+    const cands = locateMarkPlatesByBody(raise, ZONE, OPTS);
+    expect(cands.length).toBeGreaterThan(0);
+    for (const c of cands) {
+      // 枠の内側の幅で、上端は枠線の近くまで上げてある。
+      expect(c.rect.w).toBeLessThanOrEqual(PLATE.w);
+      expect(c.rect.w).toBeGreaterThan(PLATE.w * 0.85);
+      expect(Math.abs(c.rect.y - PLATE.y)).toBeLessThanOrEqual(2);
+    }
+    expect(recognizeMark(fold, ZONE, templates, OPTS).value).toBe('fold');
+    expect(recognizeMark(raise, ZONE, templates, OPTS).value).toBe('raise');
+  });
+
+  it('プレートが無ければ none（背景だけでは紫の行が無い）', () => {
+    const img: Rgba = { w: W, h: H, data: bright() };
+    expect(locateMarkPlatesByBody(img, ZONE, OPTS)).toEqual([]);
+    expect(recognizeMark(img, ZONE, templates, OPTS).value).toBe('none');
+  });
+
+  it('紫でもプレートの幅に合わないもの（バッジ・大きなボタン）は拾わない', () => {
+    const data = bright();
+    fillRect(data, { x: 180, y: 85, w: 40, h: 20 }, ACTIVE.fill); // 幅 0.4 倍のバッジ
+    expect(locateMarkPlatesByBody({ w: W, h: H, data }, ZONE, OPTS)).toEqual([]);
+    const wide = bright();
+    fillRect(wide, { x: 120, y: 60, w: 160, h: 50 }, ACTIVE.fill); // 帯を横断するボタン
+    expect(locateMarkPlatesByBody({ w: W, h: H, data: wide }, ZONE, OPTS)).toEqual([]);
+  });
+
+  it('語が能動なのに地が沈んでいたら、予備の経路でも none（彩度ゲート）', () => {
+    const img = renderPlate(WORD_RAISE, FOLD, PLATE, bright());
     expect(recognizeMark(img, ZONE, templates, OPTS).value).toBe('none');
   });
 });
