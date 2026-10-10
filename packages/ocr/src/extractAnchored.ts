@@ -41,11 +41,12 @@
  * 下流 spotReconstruction が棄却する（§6.5）。
  */
 
-import type { AnteScheme, DisplayMode, Occupancy, RawReads, RawSeatRead, Read, Rect, SeatAction } from './types.js';
+import type { AnteScheme, DisplayMode, Gray, Occupancy, RawReads, RawSeatRead, Read, Rect, SeatAction } from './types.js';
 import type { Rgba } from './color.js';
 import type { Template } from './match.js';
 import { normalizeForAnchors } from './upscaleNormalize.js';
-import { enumerateSeats, SLOTS, type SeatSlot, type Slot } from './seatEnum.js';
+import { HERO_HAND_MIN_CONF } from './pipeline.js';
+import { enumerateSeats, SLOT_ANCHORS, SLOTS, type SeatSlot, type Slot } from './seatEnum.js';
 import { readAmountBbAnchored } from './bbAmount.js';
 import { recognizeAction } from './actionTag.js';
 import { recognizeMark } from './actionMark.js';
@@ -207,13 +208,14 @@ function readStackAnchored(
 ): Read<number> {
   let best: Read<number> | null = null;
   for (const minCh of MINCH_SEQ) {
+    // 主のしきい値（120・168・185）で読めていれば、残り（150 以下。誤読の罠がある）は見ない。
+    if (best && !MAIN_MINCH.has(minCh)) break;
     const r = readAmountBbAnchored(img, sr, digits, { scoreFloor, minCh }, letters, cx);
     if (!Number.isFinite(r.value)) continue;
     // 自信のある読みは、従来どおり最初に読めたものをそのまま採る。
     if (!best && r.conf >= RETRY_BELOW_CONF) return r;
-    // 自信の無い読み（再圧縮された画像で、札の地の模様が数字に混ざる等）は、主のしきい値
-    // （120・168・185）の残りも試して、いちばん一致の良いものを採る（実測: JPEG の hero 席で
-    // 120 は 96.9〔0.68〕、185 は 95.9〔0.89〕）。150 以下は誤読の罠があるので、ここでは比べない。
+    // 自信の無い読み（再圧縮された画像で、札の地の模様が数字に混ざる等）は、主のしきい値の残りも
+    // 試して、いちばん一致の良いものを採る（実測: JPEG の hero 席で 120 は 96.9〔0.68〕、185 は 95.9〔0.89〕）。
     if (!best || r.conf > best.conf) best = r;
     if (!MAIN_MINCH.has(minCh)) break;
   }
@@ -248,11 +250,15 @@ function betRectFromName(
   img: Rgba,
   slot: Slot,
   nb: { cx: number; cy: number; h: number },
+  hRobust: number,
 ): { rect: Rect; cx: number } {
   const off = BET_OFFSETS[slot];
   const bx = nb.cx + off.dx * img.w;
   const by = nb.cy + off.dy * img.h;
-  const h = Math.max(6, nb.h);
+  // 名前の高さは席によって大きく外れる（hero の札は飾りごと拾って数倍になる）。矩形が大きいと、
+  // 下にある自分のスタックまで探索領域に入り、ベットとして読んでしまう（評価 2026-10-10: 0.5 → 6.9）。
+  // 全席の中央値から大きく外れないように抑える。
+  const h = Math.max(6, Math.min(nb.h, 1.3 * hRobust));
   const sh = Math.round(1.4 * h);
   const sw = Math.round(3.2 * h); // タイト（readAmountBbAnchored が更に左右へ拡張。中央 pot 帯を避ける）
   return {
@@ -269,8 +275,9 @@ function readBetAnchored(
   digits: readonly Template[],
   letters: readonly Template[] | undefined,
   scoreFloor: number,
+  hRobust: number,
 ): Read<number> {
-  const { rect, cx } = betRectFromName(img, slot, nb);
+  const { rect, cx } = betRectFromName(img, slot, nb, hRobust);
   return readStackAnchored(img, rect, cx, digits, letters, scoreFloor);
 }
 
@@ -318,8 +325,11 @@ function sanitizeBlinds(sb: Read<number>, bb: Read<number>): { sb: Read<number>;
  * スタックは名前の直上・ほぼ同一水平中心（コーナー席は多少ずれるが readAmountBbAnchored が
  * 左右へ広げて吸収する）。矩形寸法は名前高 h を基準にする（グリフ高≒名前高, §B4）。
  */
-function stackRectFromName(nb: { cx: number; top: number; h: number }): Rect {
-  const h = Math.max(6, nb.h);
+function stackRectFromName(nb: { cx: number; top: number; h: number }, hRobust: number): Rect {
+  // 名前の高さは全席の中央値から大きく外れないように抑える。hero の札は飾りごと拾って数倍になることが
+  // あり、そのまま使うと探索領域が画面の下半分まで広がって、隣の席のスタックを読んでしまう
+  // （評価 2026-10-10: 強く圧縮した画像で hero の 6.9 を、右隣の席の 3.1〔信頼度 0.98〕と読んだ）。
+  const h = Math.max(6, Math.min(nb.h, 1.3 * hRobust));
   const sh = Math.round(1.4 * h); // スタック行（BB 込み）の高さ
   const sw = Math.round(4.5 * h); // 中心寄せの数字幅（readAmountBbAnchored が更に左右へ拡張）
   const gap = Math.round(0.15 * h);
@@ -381,26 +391,123 @@ function cardRectFromName(nb: { cx: number; top: number; h: number }): Rect {
 const HERO_CARD_THRESHOLDS = [225, 190] as const;
 const HERO_CARD_FALLBACK = { band: { x: 0.40, y: 0.58, w: 0.22, h: 0.24 }, threshold: 245 } as const;
 
-/** hero(BC) の 2 枚を検出して heroHand を読む。 */
+/**
+ * 「白（明るくて色が付いていない）」の画素だけを 255 にしたグレー画像。カード面は純白で、明るい卓の
+ * 背景（ピンクなど）は明るくても色が付いている。明るさだけで分けると、再圧縮や明るさの違いで背景が
+ * しきい値を越えてカードとつながる（評価 2026-10-10: ピンクの卓の JPEG で 66 を 86s と読んだ）。
+ */
+function whiteOnly(img: Rgba, rect: Rect): Gray {
+  const x0 = Math.max(0, rect.x), y0 = Math.max(0, rect.y);
+  const w = Math.max(0, Math.min(img.w, rect.x + rect.w) - x0);
+  const h = Math.max(0, Math.min(img.h, rect.y + rect.h) - y0);
+  const data = new Uint8Array(w * h);
+  for (let y = 0; y < h; y++)
+    for (let x = 0; x < w; x++) {
+      const s = ((y0 + y) * img.w + (x0 + x)) * 4;
+      const R = img.data[s]!, G = img.data[s + 1]!, B = img.data[s + 2]!;
+      const mn = Math.min(R, G, B), mx = Math.max(R, G, B);
+      if (mn >= HERO_CARD_WHITE_MIN && mx - mn <= HERO_CARD_WHITE_SAT) data[y * w + x] = 255;
+    }
+  return { w, h, data };
+}
+const HERO_CARD_WHITE_MIN = 200;
+const HERO_CARD_WHITE_SAT = 10;
+
+/**
+ * hero(BC) の 2 枚を検出して heroHand を読む。
+ *
+ * 明るさのしきい値を順に試し、**自信を持って読めた最初の結果**を採る（読めていたフレームは従来どおり）。
+ * 2 枚見つかっても読みの一致が低いとき（＝カードの枠を取り違えている）は次の方法へ進み、最後に
+ * 「白だけ」のマスクでも探す。どれも自信が無ければ、いちばん一致の良かったものを返す。
+ */
 function readHeroHand(img: Rgba, ranks: readonly Template[]): Read<string> {
   const passes = [
-    ...HERO_CARD_THRESHOLDS.map((threshold) => ({ band: HERO_CARD_BAND, threshold })),
-    HERO_CARD_FALLBACK,
+    ...HERO_CARD_THRESHOLDS.map((threshold) => ({ band: HERO_CARD_BAND, threshold, white: false, close: 1 })),
+    { ...HERO_CARD_FALLBACK, white: false, close: 1 },
+    { band: HERO_CARD_FALLBACK.band, threshold: 128, white: true, close: 1 },
+    // 背景まで真っ白に飛んだ画像では、カードと背景を分けるのはカードの細い黒い輪郭だけになる。
+    // すき間を埋める処理（close）をかけると輪郭をまたいでつながるので、かけずにも探す
+    // （評価 2026-10-10: 明るさを 12% 上げた画像で、左のカードが背景とつながって見つからなかった）。
+    { band: HERO_CARD_FALLBACK.band, threshold: 128, white: true, close: 0 },
   ];
-  for (const { band, threshold } of passes) {
+  let best: Read<string> = { value: '', conf: 0 };
+  for (const { band, threshold, white, close } of passes) {
     const hrect = fracRect(img, band);
-    const g = grayFromRgba(img, hrect);
-    const found = findCardRects(g, { threshold, minAreaFrac: 0.02, closeRadius: 1 }).map((r) => ({
+    const g = white ? whiteOnly(img, hrect) : grayFromRgba(img, hrect);
+    const found = findCardRects(g, { threshold, minAreaFrac: 0.02, closeRadius: close }).map((r) => ({
       x: hrect.x + r.x,
       y: hrect.y + r.y,
       w: r.w,
       h: r.h,
     }));
     const rects = largestCardRects(found, 2);
-    if (rects.length >= 2) return recognizeHeroHandColor(img, rects[0]!, rects[1]!, ranks);
+    if (rects.length < 2) continue;
+    const r = recognizeHeroHandColor(img, rects[0]!, rects[1]!, ranks);
+    if (r.conf >= HERO_HAND_MIN_CONF) return r;
+    if (r.conf > best.conf) best = r;
   }
-  return { value: '', conf: 0 };
+  // 2 枚そろって読めなかった: 隣り合う 2 枚がつながって 1 塊になった、片方しか拾えなかった、など。
+  // hero の 2 枚は配置が決まっている（右のカードは左のカードから、幅の 1.065 倍だけ右・高さの
+  // 0.168 倍だけ下。実機 2 枚で同じ値）ので、「白だけ」で見つけたいちばん大きい 1 枚から、
+  // もう 1 枚の位置を補って読む。どちらのカードかは、画面の中央からの横位置で決める。
+  const hrect = fracRect(img, HERO_CARD_FALLBACK.band);
+  const whiteBand = whiteOnly(img, hrect);
+  for (const close of [1, 0]) {
+    const one = largestCardRects(
+      findCardRects(whiteBand, { threshold: 128, minAreaFrac: 0.02, closeRadius: close }).filter(
+        (r) => r.h >= HERO_CARD_H_FRAC[0] * img.h && r.h <= HERO_CARD_H_FRAC[1] * img.h,
+      ),
+      1,
+    )[0];
+    if (!one) continue;
+    const c = { x: hrect.x + one.x, y: hrect.y + one.y, w: one.w, h: one.h };
+    const dx = Math.round(HERO_CARD_PAIR_DX * c.w), dy = Math.round(HERO_CARD_PAIR_DY * c.h);
+    const isLeft = (c.x + c.w / 2 - img.w / 2) / img.h < HERO_CARD_SPLIT;
+    const right = snapCardWidth(img, isLeft ? { ...c, x: c.x + dx, y: c.y + dy } : c);
+    const leftRaw = snapCardWidth(img, isLeft ? c : { ...c, x: c.x - dx, y: c.y - dy });
+    // 2 枚は数 px の隙間で隣り合うので、左のカードの幅は右のカードの左端までに収める。
+    const left = { ...leftRaw, w: Math.max(1, Math.min(leftRaw.w, right.x - leftRaw.x)) };
+    const r = recognizeHeroHandColor(img, left, right, ranks);
+    if (r.conf > best.conf) best = r;
+  }
+  return best;
 }
+/**
+ * カードの幅を、上半分の「白い列」から測り直す。位置を補ったカードは幅が正確でなく（見つけた 1 枚が
+ * 背景の白とつながって数 px 太っている、右のカードは左のカードに少し隠れて細い）、幅が広すぎると
+ * ランクを切り出す角にスートの絵が入って読み違える（実測: 幅 127 で K〔0.38〕、正しい 116 で 6〔0.99〕）。
+ * 上半分だけを見るのは、下のほうは役の表示や隣の白い領域とつながりやすいため。
+ */
+function snapCardWidth(img: Rgba, card: Rect): Rect {
+  const y0 = Math.max(0, Math.round(card.y + 0.05 * card.h));
+  const y1 = Math.min(img.h, Math.round(card.y + 0.45 * card.h));
+  const x1 = Math.min(img.w, Math.round(card.x + 1.3 * card.w));
+  if (y1 <= y0 || card.x < 0) return card;
+  let last = -1, gap = 0;
+  for (let x = card.x; x < x1; x++) {
+    let white = 0;
+    for (let y = y0; y < y1; y++) {
+      const s = (y * img.w + x) * 4;
+      const R = img.data[s]!, G = img.data[s + 1]!, B = img.data[s + 2]!;
+      if (Math.min(R, G, B) >= HERO_CARD_WHITE_MIN && Math.max(R, G, B) - Math.min(R, G, B) <= HERO_CARD_WHITE_SAT) white++;
+    }
+    const fill = white / (y1 - y0);
+    if (fill >= 0.5) { last = x; gap = 0; }
+    // ランクの太い縦線の列も白が少ないので、カード幅の 2 割ぶん続いて初めて「カードの外」とする。
+    else if (fill < 0.2 && last >= 0 && ++gap >= 0.2 * card.w) break;
+  }
+  const w = last - card.x + 1;
+  // 測れなかった・極端に違うときは、元の幅のまま（別のものを測っている）。
+  return w >= 0.7 * card.w && w <= 1.2 * card.w ? { ...card, w } : card;
+}
+
+/** hero のカード 1 枚の高さ（画像の高さ比）の範囲。実機は 0.127〜0.139。 */
+const HERO_CARD_H_FRAC = [0.10, 0.17] as const;
+/** 左のカードから右のカードへのずれ（左のカードの幅・高さ比）。 */
+const HERO_CARD_PAIR_DX = 1.065;
+const HERO_CARD_PAIR_DY = 0.168;
+/** 左右のカードの境目（カードの中心 x の、画面中央からのずれ ÷ 画像の高さ）。左 −0.121・右 −0.015。 */
+const HERO_CARD_SPLIT = -0.066;
 
 /**
  * アンカー抽出のメイン。img は任意解像度／アスペクト。RawReads（extractRawReads と同形）を返す。
@@ -438,7 +545,7 @@ export function extractAnchored(img: Rgba, templates: AnchorTemplates, opts: Anc
   // 各占有席のスタック探索矩形（名前ボックスから導出）。nameBox が無い占有席（黄色名を外した
   // 席）は矩形を作れず stack=NaN のまま（occupancy は保持＝席は落とさない）。
   const stackRectOf = (s: SeatSlot): Rect | null =>
-    s.nameBox ? stackRectFromName(s.nameBox) : null;
+    s.nameBox ? stackRectFromName(s.nameBox, robustNameH) : null;
 
   // §B7: 表示モード判定。名前直上のタイト帯を **BB アンカーリーダ**（readAmountBbAnchored）に
   // かけ、**直左に数字塊を持つ BB トークン**が取れれば bb（chips 表示のスタックは純数字・カンマで
@@ -571,15 +678,26 @@ export function extractAnchored(img: Rgba, templates: AnchorTemplates, opts: Anc
         stack = readStackAnchored(nimg, sr, s.nameBox.cx, digits, letters, scoreFloor);
         // 名前ボックス破綻席（hero 手番グロー / 折れ暗コーナー / iOS 小名）: 名前直上帯では数字帯を
         // 外し NaN になる。固定フラクショナル y のフォールバック帯で読み直す（§B4 の頑健化）。
-        if (!Number.isFinite(stack.value)) {
+        // 読めても自信が無いときも同じ帯で読み直し、一致の良いほうを採る（評価 2026-10-10: 再圧縮した
+        // 画像で名前の高さを小さく見積もり、帯が下へずれて数字の上端が切れ、99 を 88〔0.61〕と読んだ）。
+        if (!Number.isFinite(stack.value) || stack.conf < RETRY_BELOW_CONF) {
           const fr = stackFallbackRect(nimg, s.slot, s.nameBox.cx, robustNameH);
           const fb = readStackAnchored(nimg, fr, s.nameBox.cx, digits, letters, scoreFloor);
-          if (Number.isFinite(fb.value)) stack = fb;
+          if (Number.isFinite(fb.value) && (!Number.isFinite(stack.value) || fb.conf > stack.conf)) stack = fb;
         }
       } else {
         // chips: 名前直上帯を生読み → BB 正規化（chips は §B7 で棄却対象なので精度は不問）。
         stack = norm(recognizeAmount(nimg, sr, digits), bbChips);
       }
+    } else if (mode === 'bb') {
+      // 名前（黄色い文字）を見つけられなかった占有席。名前の色は画像の明るさや縮小で検出を外れることが
+      // あり（評価 2026-10-10: 暗くした画像・縮小した画像で上の席の名前を外し、スタックを読みに行かず
+      // 未読になっていた）、その席だけ位置の手がかりが無い。席の決まった位置（名前の横位置は
+      // SLOT_ANCHORS、数字の高さは STACK_Y_FRAC）で読む。数字が無ければ未読のまま（装飾を席と
+      // 見間違えた「幽霊席」の判定は anteSeatCount が従来どおり行う）。
+      const cx = SLOT_ANCHORS[s.slot].x * nimg.w;
+      const fb = readStackAnchored(nimg, stackFallbackRect(nimg, s.slot, cx, robustNameH), cx, digits, letters, scoreFloor);
+      if (Number.isFinite(fb.value)) stack = fb;
     }
     const stackParsed = Number.isFinite(stack.value);
 
@@ -634,7 +752,7 @@ export function extractAnchored(img: Rgba, templates: AnchorTemplates, opts: Anc
     // のみ putIn）。hero も SB/BB になりうるので読む。
     let betRead: Read<number> = { value: NaN, conf: 0 };
     if (s.nameBox && action.value !== 'fold') {
-      betRead = readBetAnchored(nimg, s.slot, s.nameBox, digits, letters, scoreFloor);
+      betRead = readBetAnchored(nimg, s.slot, s.nameBox, digits, letters, scoreFloor, robustNameH);
     }
     let betVal = Number.isFinite(betRead.value) ? betRead.value : 0;
     let betConf = Number.isFinite(betRead.value) ? betRead.conf : 0.4;

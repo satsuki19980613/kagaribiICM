@@ -103,6 +103,17 @@ export interface ActionMarkOptions {
    * 49〜68 は「どちらでもない」死角として捨てる。
    */
   readonly activeSatMin?: number;
+  /**
+   * 地の紫から見つけたプレート（`locateMarkPlatesByBody`）の、フォールド／能動の見分け。彩度ではなく
+   * **地の明るさ**（紫の画素の最大チャンネルの平均）で分ける。既定: 105 以下がフォールド、132 以上が能動。
+   *
+   * 彩度は画像全体の色の濃さに引きずられる（別の色空間で保存された、色を変換せずに開かれた等）。
+   * 評価 2026-10-10: 彩度 0.8 倍の画像で「レイズ」が 61 に落ち、1.25 倍の画像で「フォールド」が 49 を
+   * 超え、どちらも死角に入って見落とした。地の明るさは、同じ 36 枚でフォールド 64〜91・能動 137〜173 と
+   * 大きく離れ、彩度・明るさ・再圧縮を変えても重ならなかった。間（105〜132）はどちらでもないとして捨てる。
+   */
+  readonly bodyVFoldMax?: number;
+  readonly bodyVActiveMin?: number;
   /** これ未満の NCC 信頼度なら 'none' 扱い。既定 0.45。 */
   readonly confFloor?: number;
 }
@@ -110,6 +121,10 @@ export interface ActionMarkOptions {
 export interface MarkPlate {
   /** フレーム px のプレート矩形（縁を含む）。 */
   readonly rect: Rect;
+  /** 地の紫から見つけた矩形か（枠線から見つけたものは未指定）。 */
+  readonly byBody?: boolean;
+  /** 地の紫の画素の明るさ（最大チャンネルの平均）。地の紫から見つけたときだけ。 */
+  readonly bodyV?: number;
   /** 矩形内の平均彩度（max−min チャンネル）。fold/能動の判別に使う。 */
   readonly meanSat: number;
 }
@@ -318,6 +333,17 @@ export function locateMarkPlatesByBody(img: Rgba, searchRect: Rect, opts: Action
     w: outerW,
     h: Math.round(hOverW * outerW),
   });
+  // 地の明るさ: 紫の画素だけの最大チャンネルの平均（文字や枠は数えない）。
+  let vSum = 0, vN = 0;
+  const bodyH = Math.round(hOverW * innerW);
+  for (let y = Math.max(0, inner.yTop); y < Math.min(mask.h, inner.yTop + bodyH); y++)
+    for (let x = inner.xs; x < inner.xe; x++) {
+      if (!mask.data[y * mask.w + x]) continue;
+      const p = ((y0 + y) * img.w + (x0 + x)) * 4;
+      vSum += Math.max(img.data[p]!, img.data[p + 1]!, img.data[p + 2]!);
+      vN++;
+    }
+  const bodyV = vN > 0 ? vSum / vN : 0;
   const out: MarkPlate[] = [];
   for (const insetFrac of BODY_X_INSETS)
     for (const topFrac of BODY_TOP_OUTSETS) {
@@ -325,7 +351,7 @@ export function locateMarkPlatesByBody(img: Rgba, searchRect: Rect, opts: Action
       const top = Math.round(topFrac * innerW);
       const span: PlateSpan = { xs: inner.xs + inset, xe: inner.xe - inset, yTop: inner.yTop - top };
       const plate = plateFromSpan(img, x0, y0, mask, span, hOverW);
-      if (plate) out.push({ rect: plate.rect, meanSat });
+      if (plate) out.push({ rect: plate.rect, meanSat, byBody: true, bodyV });
     }
   return out;
 }
@@ -413,10 +439,16 @@ function judgePlate(
 
   // ゲート c: 語のクラスとプレートの彩度が整合しているか。fold は沈んだプレート（低彩度帯）、
   // 能動は鮮やかなプレート（高彩度）。どちらの帯にも入らない矩形は背景／装飾なので落とす。
+  // 地の紫から見つけたプレートは、彩度の代わりに地の明るさで同じ判定をする（bodyVFoldMax の説明）。
   const sat = plate.meanSat;
-  const satOk = isDimWord(action)
-    ? sat >= (opts.foldSatMin ?? 25) && sat <= (opts.foldSatMax ?? 49)
-    : sat >= (opts.activeSatMin ?? 68);
+  const satOk =
+    plate.byBody && plate.bodyV !== undefined
+      ? isDimWord(action)
+        ? plate.bodyV <= (opts.bodyVFoldMax ?? 105)
+        : plate.bodyV >= (opts.bodyVActiveMin ?? 132)
+      : isDimWord(action)
+        ? sat >= (opts.foldSatMin ?? 25) && sat <= (opts.foldSatMax ?? 49)
+        : sat >= (opts.activeSatMin ?? 68);
   if (!satOk) return { read: none, diag: { ...diagBase, rejected: 'sat' } };
   return { read: { value: action, conf }, diag: diagBase };
 }

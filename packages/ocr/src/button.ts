@@ -132,6 +132,26 @@ export function detectButtonSeat(
  * ほかに無い（ハートのカード・席の赤い印・赤い枠は大きさ・形・距離で外れる）ので、こちらを優先する。
  */
 export function redDiscSeat(img: Rgba, tableRect: Rect, anchors: readonly FracPoint[]): number | null {
+  // まず実測どおりの純赤で探し、見つからなければ「色の濃さに対する割合」で赤を判定し直す。画像全体の
+  // 彩度が低いと（別の色空間で保存された等）純赤のしきい値を外れ、金色ディスク検出に戻って飾りを D と
+  // 取り違える（評価 2026-10-10: 彩度 0.7 倍の画像で BR の D を BL と判定し、ポジションが丸ごとずれた）。
+  return (
+    redDiscSeatBy(img, tableRect, anchors, (R, G, B) => R >= 170 && G <= 60 && B <= 70 && R - G >= 130) ??
+    redDiscSeatBy(
+      img,
+      tableRect,
+      anchors,
+      (R, G, B) => R >= 150 && R - Math.max(G, B) >= 0.5 * R && Math.abs(G - B) <= 0.35 * (R - Math.min(G, B)),
+    )
+  );
+}
+
+function redDiscSeatBy(
+  img: Rgba,
+  tableRect: Rect,
+  anchors: readonly FracPoint[],
+  isRed: (R: number, G: number, B: number) => boolean,
+): number | null {
   const x0 = Math.max(0, Math.floor(tableRect.x));
   const y0 = Math.max(0, Math.floor(tableRect.y));
   const x1 = Math.min(img.w, Math.round(tableRect.x + tableRect.w));
@@ -143,7 +163,7 @@ export function redDiscSeat(img: Rgba, tableRect: Rect, anchors: readonly FracPo
     for (let x = 0; x < w; x++) {
       const s = ((y0 + y) * img.w + (x0 + x)) * 4;
       const R = img.data[s]!, G = img.data[s + 1]!, B = img.data[s + 2]!;
-      mask[y * w + x] = R >= 170 && G <= 60 && B <= 70 && R - G >= 130 ? 1 : 0;
+      mask[y * w + x] = isRed(R, G, B) ? 1 : 0;
     }
   const seats = new Set<number>();
   let hits = 0;

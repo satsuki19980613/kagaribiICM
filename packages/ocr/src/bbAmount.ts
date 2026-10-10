@@ -34,6 +34,12 @@ export interface BbAmountOptions extends WhiteMaskOptions {
    * 避けるため既定 0 のまま（呼び出し側が明示的に渡さない限り不変＝回帰なし）。
    */
   readonly scoreFloor?: number;
+  /**
+   * 採る数値の中心と、アンカー（nameCx）の横の距離の上限（px）。既定は無制限。
+   * 探索領域は左右に広く、目当ての数値が読めないと、領域に入った別の数値（隣の席のベットなど）が
+   * 「いちばん近い候補」として採られる（評価 2026-10-10: ポットが読めず、左上の席の 1 BB をポットとした）。
+   */
+  readonly maxAnchorDist?: number;
 }
 
 interface RawComp extends Rect {
@@ -101,6 +107,60 @@ function glyphComponents(mask: Gray): RawComp[] {
   return base.filter((c) => c.h <= 1.4 * glyphH);
 }
 
+
+/** 数字ごとの「囲まれた穴」の数（このゲームの書体）。 */
+const DIGIT_HOLES: Readonly<Record<string, number>> = { '0': 1, '1': 0, '2': 0, '3': 0, '4': 1, '5': 0, '6': 1, '7': 0, '8': 2, '9': 1 };
+/** 1 位と 2 位の一致の差がこれ未満なら、穴の数で決め直す。 */
+const HOLE_TIE_GAP = 0.06;
+
+/** 成分の外接矩形の中で、縁につながっていない背景のかたまり（＝穴）を数える。小さすぎるものは無視。 */
+function countHoles(mask: Gray, c: Rect): number {
+  const w = c.w + 2, h = c.h + 2; // 1px の余白を足して、外側の背景を 1 つにつなぐ
+  const bg = new Uint8Array(w * h);
+  for (let y = 0; y < h; y++)
+    for (let x = 0; x < w; x++) {
+      const inside = x >= 1 && x <= c.w && y >= 1 && y <= c.h;
+      bg[y * w + x] = inside && mask.data[(c.y + y - 1) * mask.w + (c.x + x - 1)] ? 0 : 1;
+    }
+  const seen = new Uint8Array(w * h);
+  const fill = (start: number): number => {
+    const st = [start];
+    seen[start] = 1;
+    let area = 0;
+    while (st.length) {
+      const p = st.pop()!;
+      area++;
+      const px = p % w, py = (p / w) | 0;
+      for (const q of [px > 0 ? p - 1 : -1, px < w - 1 ? p + 1 : -1, py > 0 ? p - w : -1, py < h - 1 ? p + w : -1]) {
+        if (q >= 0 && bg[q] && !seen[q]) { seen[q] = 1; st.push(q); }
+      }
+    }
+    return area;
+  };
+  fill(0); // 外側
+  let holes = 0;
+  const minArea = Math.max(2, Math.round(0.01 * c.w * c.h));
+  for (let i = 0; i < w * h; i++) if (bg[i] && !seen[i] && fill(i) >= minArea) holes++;
+  return holes;
+}
+
+/**
+ * 1 位と 2 位が僅差で、穴の数が違う数字どうしなら、成分の穴の数に合うほうを採る。
+ *
+ * 縮小して再圧縮した画像では、6 と 5、8 と 3 のように輪郭の似た数字の一致が僅差になり、取り違える
+ * （評価 2026-10-10: 14.6 を 14.5 と読んだ。6〔下に輪がある〕と 5〔輪が無い〕は穴の数で見分けられる）。
+ * 一致に差があるときは何もしない。
+ */
+function breakTieByHoles(mask: Gray, strip: Gray, comp: Rect, templates: readonly Template[], m: { label: string; score: number }): string {
+  const expected = DIGIT_HOLES[m.label];
+  if (expected === undefined) return m.label;
+  const others = templates.filter((t) => t.label !== m.label && DIGIT_HOLES[t.label] !== undefined);
+  if (others.length === 0) return m.label;
+  const second = bestMatch(normGlyph(strip, comp), others);
+  if (m.score - second.score >= HOLE_TIE_GAP || DIGIT_HOLES[second.label] === expected) return m.label;
+  const holes = countHoles(mask, comp);
+  return holes === DIGIT_HOLES[second.label] && holes !== expected ? second.label : m.label;
+}
 
 function normGlyph(strip: Gray, r: Rect): Gray {
   const g = crop(strip, r);
@@ -301,8 +361,16 @@ export function readAmountBb(
   return { value, conf };
 }
 
-/** "BB" の 2 文字目として認める「8 と読めた成分」の、B テンプレとの一致の下限。 */
-const B_AS_8_MIN = 0.75;
+/** "BB" の 2 文字の間の隙間の上限（文字の高さ比）。実測 0.1〜0.2。数値と単位の間の空白は 0.5〜0.7。 */
+const BB_TIGHT_GAP = 0.35;
+/** B の右に詰まった成分を 2 つ目の B と認める、B テンプレとの一致の下限。 */
+const B_SECOND_MIN = 0.5;
+/** 数字と読めた成分を 1 つ目の B と認める、B テンプレとの一致の下限。 */
+const B_FIRST_MIN = 0.75;
+/** 2 文字とも数字と読めたときに、どちらにも求める B テンプレとの一致の下限。 */
+const B_BOTH_MIN = 0.8;
+/** 1 つ目の B の左の空白が、2 文字の隙間よりこれだけ（文字の高さ比）広いこと。 */
+const BB_SPACE_MARGIN = 0.25;
 /** 先頭の数字を拾い直すときの、数字テンプレとの一致の下限（飾り線の誤一致は実測 0.79 まで）。 */
 const LEAD_MIN_SCORE = 0.85;
 /** 先頭の数字を拾い直す窓に必要なインクの割合（何も無い場所を照合しない）。 */
@@ -337,6 +405,34 @@ export function readAmountBbAnchored(
   letters?: readonly Template[],
   nameCx?: number,
 ): Read<number> {
+  const info = { clipped: false };
+  const first = readAnchoredOnce(img, stackRect, templates, opts, letters, nameCx, 0.6, info);
+  if (!info.clipped) return first;
+  // 文字が探索領域の上端か下端で切れている: 領域の縦位置がずれている（名前の高さを小さく見積もった
+  // 画像で起きる。評価 2026-10-10: 縮小して再圧縮した画像で「1 BB」「2 BB」の上が切れて未読）。
+  // 縦に広げてもう一度読み、読めたほう・一致の良いほうを採る。
+  const wide = { clipped: false, tokenCy: NaN };
+  const second = readAnchoredOnce(img, stackRect, templates, opts, letters, nameCx, 1.6, wide);
+  // 広げた領域には別の数値（ベットの下にある hero のスタックなど）も入る。読めた数値が、元の領域の
+  // 端から矩形の半分以内に無ければ、切れていた文字の読み直しではないので採らない。
+  const top = stackRect.y - 0.6 * stackRect.h, bottom = stackRect.y + 1.6 * stackRect.h;
+  const near = wide.tokenCy >= top - 0.5 * stackRect.h && wide.tokenCy <= bottom + 0.5 * stackRect.h;
+  if (near && Number.isFinite(second.value) && (!Number.isFinite(first.value) || second.conf > first.conf)) return second;
+  return first;
+}
+
+function readAnchoredOnce(
+  img: Rgba,
+  stackRect: Rect,
+  templates: readonly Template[],
+  opts: BbAmountOptions,
+  letters: readonly Template[] | undefined,
+  nameCx: number | undefined,
+  /** 上下に広げる量（矩形の高さ比）。 */
+  grow: number,
+  /** 文字らしい成分が領域の上端・下端に接していたら clipped を立てる。tokenCy は採った数値の縦の中心（画像座標）。 */
+  info: { clipped: boolean; tokenCy?: number },
+): Read<number> {
   const minCh = opts.minCh ?? 120;
   const maxSat = opts.maxSat ?? 80;
   // 探索領域: 矩形がどちら向きにドリフトしても stack を含むよう左右対称に広げる（ドリフトは
@@ -345,8 +441,8 @@ export function readAmountBbAnchored(
   // 「直左に数字」判別子＋名前アンカーで stack-BB だけを選ぶ。whiteMask は画像外を内部クランプ。
   const left = Math.round(stackRect.w * 1.5);
   const right = Math.round(stackRect.w * 0.7);
-  const up = Math.round(stackRect.h * 0.6);
-  const down = Math.round(stackRect.h * 0.6);
+  const up = Math.round(stackRect.h * grow);
+  const down = Math.round(stackRect.h * grow);
   const region: Rect = { x: stackRect.x - left, y: stackRect.y - up, w: stackRect.w + left + right, h: stackRect.h + up + down };
 
   const strip = grayFromRgba(img, region);
@@ -367,24 +463,67 @@ export function readAmountBbAnchored(
     const g = normGlyph(strip, c);
     const m = bestMatch(g, [...templates, ...lset]);
     // "8" と読めた成分が B にもよく似ているか（"BB" の 2 文字目を 8 と取り違えた場合の救済に使う）。
-    const bScore = m.label === '8' && lset.length > 0 ? bestMatch(g, lset).score : 0;
+    const bScore = m.label !== 'B' && lset.length > 0 ? bestMatch(g, lset).score : 0;
     return { c, label: m.label, score: m.score, bScore };
   });
+  // 数字か B にそこそこ一致する成分が、領域の上端か下端に接している＝文字が切れている。
+  if (labeled.some((l) => l.score >= 0.5 && (l.c.y <= 0 || l.c.y + l.c.h >= mask.h) && l.c.h >= 8)) info.clipped = true;
   const isDigit = (l: string): boolean => l.length === 1 && l >= '0' && l <= '9';
   // 隣り合う 2 成分が "BB" の組か（どちらも B と読め、同じ高さ・近接・同じベースライン）。
+  // i の右隣の「同じ行の成分」。x 順の並びには、行の外の小さな欠片（上の飾り・下のバッジの一部）が
+  // 挟まることがあり、単純に i+1 を見ると "BB" の 2 文字が隣どうしにならない（実測: ピンクの卓の
+  // 「1 BB」で、B と B の間の x に、上の飾りの欠片が入って未読になっていた）。
+  const nextInRow = (i: number): number => {
+    const a = labeled[i];
+    if (!a) return -1;
+    for (let j = i + 1; j < labeled.length; j++) {
+      const c = labeled[j]!.c;
+      const overlap = Math.min(a.c.y + a.c.h, c.y + c.h) - Math.max(a.c.y, c.y);
+      if (overlap >= 0.5 * a.c.h && c.h >= 0.6 * a.c.h) return j;
+    }
+    return -1;
+  };
+  // i の左隣の「同じ行の成分」。
+  const prevInRow = (i: number): number => {
+    const a = labeled[i];
+    if (!a) return -1;
+    for (let j = i - 1; j >= 0; j--) {
+      const c = labeled[j]!.c;
+      const overlap = Math.min(a.c.y + a.c.h, c.y + c.h) - Math.max(a.c.y, c.y);
+      if (overlap >= 0.5 * a.c.h && c.h >= 0.6 * a.c.h) return j;
+    }
+    return -1;
+  };
+  /**
+   * i と右隣が "BB" の組か。同じ高さ・近接・同じベースラインで、次のどれか:
+   *  1. どちらも B と読めた。
+   *  2. 1 文字目が B で、2 文字目は **すぐ右に詰まっている**（数字と読めていても、B にある程度似ていればよい）。
+   *     表示は必ず「数値 BB」で終わり、B の後ろに詰めて置かれるのは 2 つ目の B だけなので、並び方で決める
+   *     （実測: 縮小・再圧縮した画像で 2 文字目だけ 8 や 6 と読め、"BB" が見つからず未読になった）。
+   *  3. 2 文字目が B で、1 文字目は B によく似た数字と読めていて、**2 文字の間は詰まっているのに、その左は
+   *     空いている**（数値と単位の間の空白）。1 文字目だけ 8 と読めた場合（実測: ポットの「5 BB」が
+   *     "5 8B" になり、近くのベットの 1 BB をポットとして読んだ）。左が詰まっていれば本物の数字なので認めない。
+   */
   const isBbPair = (i: number): boolean => {
-    const a = labeled[i], b = labeled[i + 1];
+    const a = labeled[i], b = labeled[nextInRow(i)];
     if (!a || !b) return false;
-    if (a.label !== 'B' || a.score < 0.5) return false;
-    // 2 文字目は B。ただし「B の右隣の 8」は B の取り違えとして認める（表示は必ず "BB" で終わり、
-    // B の後ろに数字は来ない。実測: 縮小した画像で 2 文字目だけ 8 と読め、"BB" が見つからず未読になり、
-    // 別のしきい値での誤読 0.5→5 が採用された）。左側の 8 は本物の数字かもしれないので認めない。
-    const bIsB = b.label === 'B' ? b.score >= 0.5 : b.label === '8' && b.bScore >= B_AS_8_MIN;
-    if (!bIsB) return false;
     const gh = (a.c.h + b.c.h) / 2;
+    const gap = b.c.x - (a.c.x + a.c.w);
     if (Math.abs(a.c.h - b.c.h) > 0.35 * gh) return false; // 同程度の高さ
-    if (b.c.x - (a.c.x + a.c.w) > 0.9 * gh) return false; // BB は近接
-    return Math.abs((a.c.y + a.c.h) - (b.c.y + b.c.h)) <= 0.3 * gh; // 同一ベースライン
+    if (gap > 0.9 * gh) return false; // BB は近接
+    if (Math.abs((a.c.y + a.c.h) - (b.c.y + b.c.h)) > 0.3 * gh) return false; // 同一ベースライン
+    const aB = a.label === 'B' && a.score >= 0.5;
+    const bB = b.label === 'B' && b.score >= 0.5;
+    if (aB && bB) return true;
+    const tight = gap <= BB_TIGHT_GAP * gh;
+    if (aB) return tight && b.bScore >= B_SECOND_MIN;
+    // 1 文字目が B と読めていない: 2 文字が詰まっていて、その左が空いている（数値と単位の間の空白）こと。
+    // 2 文字目も数字と読めているなら（小さな画像では B が両方とも 8 と読めることがある）、どちらも
+    // B によく似ていることを求める。
+    if (!tight || a.bScore < B_FIRST_MIN) return false;
+    if (!bB && (a.bScore < B_BOTH_MIN || b.bScore < B_BOTH_MIN)) return false;
+    const prev = labeled[prevInRow(i)];
+    return !!prev && a.c.x - (prev.c.x + prev.c.w) >= gap + BB_SPACE_MARGIN * gh;
   };
 
   // BB トークン列挙。各トークンの B 高さ gh を尺度に、直左の連続数字塊を集める。
@@ -395,8 +534,9 @@ export function readAmountBbAnchored(
     // B と読める成分が 3 つ以上並んでいたら、**右端の 2 つ**が "BB"（表示は必ず「数値 BB」で終わる）。
     // 左側の「B」は、B と取り違えた数字（"8" "0" が多い）。左から組にすると、"98 BB" の "8B" を
     // 接尾辞と見なして 9 と読んでしまう（実測: 縮小した画像で 98→9、2.8→2。信頼度は高いまま）。
-    if (isBbPair(i + 1)) continue;
-    const a = labeled[i]!, b = labeled[i + 1]!;
+    const j = nextInRow(i);
+    if (isBbPair(j)) continue;
+    const a = labeled[i]!, b = labeled[j]!;
     const gh = (a.c.h + b.c.h) / 2;
     const bbBottom = (a.c.y + a.c.h + b.c.y + b.c.h) / 2;
     const run: number[] = [];
@@ -420,7 +560,7 @@ export function readAmountBbAnchored(
     if (run.length === 0) continue; // 直左に数字が無い＝バッジ/felt/隣席（判別子）→除外
     const firstC = labeled[run[0]!]!.c;
     cands.push({ digitRun: run, gh, bbX0: a.c.x, bbBottom, cx: (firstC.x + a.c.x) / 2 + region.x });
-    i++; // ペア消費
+    i = j; // ペア消費
   }
   if (cands.length === 0) return { value: NaN, conf: 0 };
 
@@ -429,10 +569,15 @@ export function readAmountBbAnchored(
     ? cands.reduce((best, c) => (Math.abs(c.cx - nameCx) < Math.abs(best.cx - nameCx) ? c : best))
     : cands.reduce((best, c) => (c.cx > best.cx ? c : best));
 
+  if (nameCx !== undefined && opts.maxAnchorDist !== undefined && Math.abs(chosen.cx - nameCx) > opts.maxAnchorDist) {
+    return { value: NaN, conf: 0 };
+  }
   const gh = chosen.gh;
+  info.tokenCy = region.y + chosen.bbBottom - gh / 2;
   let N = Math.round(0.35 * gh);
   N = Math.max(4, Math.min(N, Math.max(4, gh - 3)));
   const numTall: RawComp[] = chosen.digitRun.map((k) => labeled[k]!.c);
+  const core = new Set<RawComp>(numTall);
   // 先頭桁がアバター発光弧に融合し幅広ブロブ化して narrow から漏れるケース（iOS コーナー
   // "19.2"→"9.2"）: 現行 run の左に、弧刈り込みで数字化できる幅広ブロブがあれば復元して前置。
   {
@@ -497,11 +642,18 @@ export function readAmountBbAnchored(
   const scoreFloor = opts.scoreFloor ?? 0;
   let text = '';
   let minScore = 1;
+  let dropped = false;
   for (const it of items) {
     if (it.dot) { text += '.'; continue; }
     const m = bestMatch(normGlyph(strip, it.comp), templates);
-    if (m.score < scoreFloor) continue;
-    text += m.label;
+    if (m.score < scoreFloor) {
+      // 数値の並びの中の成分を「数字ではない」として落とした: 桁が 1 つ欠けた読みかもしれないので、
+      // 自信のある読みとしては扱わない（評価 2026-10-10: "98" の 9 を落とした ".8" が 0.86 で採用された）。
+      // 左に足してみた成分（弧の刈り込み）が数字でなかっただけの場合は数えない。
+      if (core.has(it.comp)) dropped = true;
+      continue;
+    }
+    text += breakTieByHoles(mask, strip, it.comp, templates, m);
     const s = matchConfidence(m);
     if (s < minScore) minScore = s;
   }
@@ -511,6 +663,9 @@ export function readAmountBbAnchored(
     text = `0.${text.slice(1)}`;
     minScore = Math.min(minScore, 0.7);
   }
+  // 小数点で始まる数（".8"）は表示に無い。先頭の桁を拾えていないので、読めなかったことにする。
+  if (text.startsWith('.')) return { value: NaN, conf: 0 };
+  if (dropped) minScore = Math.min(minScore, 0.5);
   const value = parseAmount(text);
   if (value === null) return { value: NaN, conf: 0 };
   return { value, conf: Math.max(0, Math.min(1, minScore)) };

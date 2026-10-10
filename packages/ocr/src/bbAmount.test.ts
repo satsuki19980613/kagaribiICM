@@ -171,6 +171,31 @@ describe('readAmountBbAnchored (two-anchor 名前アンカー)', () => {
     expect(Number.isNaN(r.value)).toBe(true);
   });
 
+  it('BB の 1 文字目だけ 8 と読めても、数値との間が空いていれば BB として扱う（"2 8B" → 2）', () => {
+    // 数値と単位の間には空白があり、BB の 2 文字は詰まっている。その並び方で決める
+    // （実測: ポットの「5 BB」が "5 8B" と読め、BB が見つからず、近くのベットをポットとした）。
+    const img = hcat(render([TWO]), render([EIGHT, BEE]), 20);
+    const r = readAmountBbAnchored(img, full(img), digits8, { minCh: 100 }, letters);
+    expect(r.value).toBe(2);
+  });
+
+  it('BB の 2 文字とも 8 と読めても、並び方が「数値・空白・詰まった 2 文字」なら BB として扱う（"2 88" → 2）', () => {
+    const img = hcat(render([TWO]), render([EIGHT, EIGHT]), 20);
+    // 8 の形そのものは B のテンプレと 0.8 以上一致する（1 行違い）。
+    const r = readAmountBbAnchored(img, full(img), digits8, { minCh: 100 }, letters);
+    expect(r.value).toBe(2);
+    // 空白が無ければ、ただの数字の並び（"288"）で、BB は無い。
+    const packed = render([TWO, EIGHT, EIGHT]);
+    expect(Number.isNaN(readAmountBbAnchored(packed, full(packed), digits8, { minCh: 100 }, letters).value)).toBe(true);
+  });
+
+  it('アンカーから遠い数値は採らない（maxAnchorDist。ポットが読めないときに隣のベットを拾わない）', () => {
+    const img = render([TWO, ZERO, BEE, BEE]);
+    const far = img.w + 500;
+    expect(readAmountBbAnchored(img, full(img), digits, { minCh: 100 }, letters, far).value).toBe(20);
+    expect(Number.isNaN(readAmountBbAnchored(img, full(img), digits, { minCh: 100, maxAnchorDist: 100 }, letters, far).value)).toBe(true);
+  });
+
   it('0 で始まる 2 桁は存在しないので小数点を補い、信頼度を下げる（"02 BB" → 0.2）', () => {
     const img = render([ZERO, TWO, BEE, BEE]);
     const r = readAmountBbAnchored(img, full(img), digits, { minCh: 100 }, letters);
