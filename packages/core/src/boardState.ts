@@ -72,6 +72,11 @@ export const BoardStateSchema = z.object({
    */
   raiseTo: z.number().finite().positive().optional(),
   /**
+   * レイズした人のレイズレンジを「上位 N%」と仮定して解く（N は 1〜100）。**省略時はレンジも
+   * ソルバーが決める**（均衡のレンジ。罠だけの狭いレンジになりやすい）。raiseTo があるときだけ意味を持つ。
+   */
+  raiseRange: z.number().finite().min(1).max(100).optional(),
+  /**
    * hero の判断までに起きたアクション（席 → 'F' / 'R' / 'P' / 'C'）。hero の決定ノードを
    * 結果画面の見出しに選ぶために使う。hero 自身が 'R' なら「レイズ後にオールインを受けた」判断。
    * 省略時は従来どおり（hero の未開ノード）。

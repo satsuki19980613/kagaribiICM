@@ -42,6 +42,8 @@ export interface BoardForm {
   raiser?: Position | '';
   /** レイズ額（BB, 総ベット額）の入力文字列。既定 "2"。 */
   raiseTo?: string;
+  /** レイズした人のレンジの仮定（"10"=上位 10% など）。空ならソルバーが決める。 */
+  raiseRange?: string;
   /**
    * スクショから読んだ hero の判断までのアクション。raiser を手で変えたら破棄する
    * （そのときは raiser 以外を全員フォールドとして組み立て直す）。
@@ -70,6 +72,40 @@ export function defaultForm(playersLeft = 4, gameMode: GameMode = 'club'): Board
     stacks,
     gameMode,
   };
+}
+
+/** レイズした人のレンジの仮定（上位 N%）の選択肢。 */
+export const RAISE_RANGE_PRESETS = [10, 15, 20, 30] as const;
+
+/**
+ * 手入力: hero より前の席 pos の「オールインした／していない」を切り替えた line を返す。
+ * 最初のオールインが 'P'、それ以降は 'C'（コール）、レイズした人は 'R'、ほかは 'F'。レイズした人より前の席と
+ * レイズした人自身は切り替えられない（レイズは最初に参加した人だけ）。誰も参加していなければ undefined。
+ */
+export function toggleAllin(form: BoardForm, pos: Position): Partial<Record<Position, ActionChar>> | undefined {
+  const order = positionsForPlayersLeft(form.playersLeft);
+  const hi = order.indexOf(form.heroPos);
+  const raiser = form.raiser || '';
+  const ri = raiser ? order.indexOf(raiser) : -1;
+  const pi = order.indexOf(pos);
+  const cur = form.line ?? {};
+  // hero がレイズした本人の line（スクショ由来・全員分）は手では組み替えない。
+  if (cur[form.heroPos] === 'R') return form.line;
+  if (pi < 0 || pi >= hi || pi <= ri) return form.line;
+  const allin = new Set(order.slice(0, hi).filter((p) => cur[p] === 'P' || cur[p] === 'C'));
+  if (allin.has(pos)) allin.delete(pos);
+  else allin.add(pos);
+  if (allin.size === 0 && !raiser) return undefined;
+  const line: Partial<Record<Position, ActionChar>> = {};
+  let first = true;
+  for (const p of order.slice(0, hi)) {
+    if (p === raiser) line[p] = 'R';
+    else if (allin.has(p)) {
+      line[p] = first ? 'P' : 'C';
+      first = false;
+    } else line[p] = 'F';
+  }
+  return line;
 }
 
 /** 人数変更時: ポジション集合に合わせて stacks/heroPos を整える（既存値は保持）。 */
@@ -141,7 +177,7 @@ export function buildBoardState(form: BoardForm): BuildResult {
 
   // ミニレイズ・ゲーム（最初の参加者のレイズ）。
   const raiser = form.raiser || '';
-  let raiseFields: { raiseTo?: number; line?: Partial<Record<Position, ActionChar>> } = {};
+  let raiseFields: { raiseTo?: number; raiseRange?: number; line?: Partial<Record<Position, ActionChar>> } = {};
   if (raiser) {
     const raiseTo = num(form.raiseTo ?? '2');
     const order = positions;
@@ -157,7 +193,9 @@ export function buildBoardState(form: BoardForm): BuildResult {
     } else if (rs && rs.stack + rs.bet <= raiseTo) {
       issues.push(`${raiser} のスタックではレイズ ${raiseTo}bb がオールインになります（オールインとして扱ってください）`);
     }
-    raiseFields = { raiseTo, line };
+    const rr = num(form.raiseRange ?? '');
+    const assumed = form.raiseRange && Number.isFinite(rr) && rr >= 1 && rr <= 100 ? { raiseRange: rr } : {};
+    raiseFields = { raiseTo, line, ...assumed };
   }
 
   // レイズの無い局面でも、スクショから読んだ「前の人のオールイン」は残す（結果画面の見出しに使う）。

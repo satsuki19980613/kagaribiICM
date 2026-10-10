@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildBoardState, defaultForm, lineText } from './formModel';
+import { buildBoardState, defaultForm, lineText, toggleAllin } from './formModel';
 import { boardStateToForm } from './ocrPrefill';
 
 describe('手入力のミニレイズ', () => {
@@ -41,5 +41,46 @@ describe('手入力のミニレイズ', () => {
     const bad = buildBoardState({ ...defaultForm(4), heroPos: 'BU' as const, line: { CO: 'F', BU: 'P' } as const });
     expect(bad.ok).toBe(true);
     expect(bad.state!.line).toBeUndefined();
+  });
+
+  it('レイズレンジの仮定（上位 N%）は、レイズした人がいるときだけ state に入る', () => {
+    const f = { ...defaultForm(6), heroPos: 'BU' as const, raiser: 'UTG' as const, raiseTo: '2', raiseRange: '20' };
+    expect(buildBoardState(f).state!.raiseRange).toBe(20);
+    expect(buildBoardState({ ...f, raiseRange: '' }).state!.raiseRange).toBeUndefined();
+    expect(buildBoardState({ ...f, raiser: '' as const }).state!.raiseRange).toBeUndefined();
+  });
+});
+
+describe('手入力の「前の人のオールイン」', () => {
+  const base = { ...defaultForm(6), heroPos: 'SB' as const };
+
+  it('押すとオールイン、もう一度押すと戻る。最初が P、2 人目からは C', () => {
+    const l1 = toggleAllin(base, 'HJ');
+    expect(l1).toEqual({ UTG: 'F', HJ: 'P', CO: 'F', BU: 'F' });
+    const l2 = toggleAllin({ ...base, line: l1 }, 'BU');
+    expect(l2).toEqual({ UTG: 'F', HJ: 'P', CO: 'F', BU: 'C' });
+    // 先にいた人を外すと、残った人が最初のオールインになる。
+    expect(toggleAllin({ ...base, line: l2 }, 'HJ')).toEqual({ UTG: 'F', HJ: 'F', CO: 'F', BU: 'P' });
+    // 全員外すと line は無くなる（AOF の未開の場面）。
+    expect(toggleAllin({ ...base, line: l1 }, 'HJ')).toBeUndefined();
+    const st = buildBoardState({ ...base, line: l2 }).state!;
+    expect(st.line).toEqual(l2);
+    expect(st.raiseTo).toBeUndefined();
+  });
+
+  it('HERO 以降の席と、レイズした人より前の席は切り替えられない', () => {
+    expect(toggleAllin(base, 'SB')).toBeUndefined();
+    expect(toggleAllin(base, 'BB')).toBeUndefined();
+    const raised = { ...base, raiser: 'HJ' as const, raiseTo: '2' };
+    expect(toggleAllin(raised, 'UTG')).toBeUndefined();
+    expect(toggleAllin(raised, 'HJ')).toBeUndefined();
+    // レイズした人より後ろはオールインで返せる。
+    const l = toggleAllin(raised, 'BU');
+    expect(l).toEqual({ UTG: 'F', HJ: 'R', CO: 'F', BU: 'P' });
+    const st = buildBoardState({ ...raised, line: l }).state!;
+    expect(st.raiseTo).toBe(2);
+    expect(st.line).toEqual(l);
+    // オールインを外しても、レイズした人は残る。
+    expect(toggleAllin({ ...raised, line: l }, 'BU')).toEqual({ UTG: 'F', HJ: 'R', CO: 'F', BU: 'F' });
   });
 });

@@ -1,5 +1,5 @@
 import { formatBbDisplay, gameModeLabel, positionsForPlayersLeft, type BoardState } from '@kagaribi/core';
-import { lineText } from '../formModel';
+import { lineText, RAISE_RANGE_PRESETS } from '../formModel';
 import type { OcrReadout } from '@kagaribi/ocr';
 import { useState } from 'react';
 import { BlindPick } from './BlindPick';
@@ -37,6 +37,8 @@ export function Confirm(props: {
   unresolvedStacks: string[];
   blocked: boolean;
   onSolve: () => void;
+  /** レイズした人のレンジの仮定を選び直す（null=ソルバーが決める）。レイズの入った局面だけ渡す。 */
+  onRaiseRange?: (pct: number | null) => void;
 }): JSX.Element {
   const { state } = props;
   const [showImage, setShowImage] = useState(false);
@@ -132,8 +134,29 @@ export function Confirm(props: {
         </dl>
       </div>
       {state.raiseTo !== undefined && (
-        <div className="notice">
-          最初の人のレイズが入った局面として計算します。レイズの後は全員オールインかフォールドだけ（フラットコールなし）のモデルで、レイズする人のレンジもソルバーが決めます。
+        <div className="panel">
+          <div className="panel-h">
+            <span className="eyebrow">RAISE RANGE</span>
+            <span className="rt">レイズする人のレンジ</span>
+          </div>
+          {props.onRaiseRange && (
+            <div className="seg">
+              <button type="button" aria-pressed={state.raiseRange === undefined} onClick={() => props.onRaiseRange!(null)}>
+                AUTO
+              </button>
+              {RAISE_RANGE_PRESETS.map((p) => (
+                <button key={p} type="button" aria-pressed={state.raiseRange === p} onClick={() => props.onRaiseRange!(p)}>
+                  {p}%
+                </button>
+              ))}
+            </div>
+          )}
+          <p className="hint">
+            {state.raiseRange === undefined
+              ? 'AUTO: レイズする人のレンジもソルバーが決めます。このモデルではレイズは強いハンドの罠になりやすく、レンジが狭く出ます。相手がもっと広くレイズしてくるなら、近い % を選んでください。'
+              : `レイズする人は上位 ${state.raiseRange}% のハンドでレイズすると仮定します（ランダムなハンドに対する勝率の順）。`}{' '}
+            レイズの後は全員オールインかフォールドだけ（フラットコールなし）のモデルです。
+          </p>
         </div>
       )}
 

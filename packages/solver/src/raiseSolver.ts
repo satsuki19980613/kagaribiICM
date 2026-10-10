@@ -37,6 +37,7 @@ import { computeShowdownMc, type ShowdownMcResult, type StratSpec } from './show
 import {
   computeShowdown2Exact,
   computeShowdown3Exact,
+  rankClassesByEquityVs,
   exact3LookupCost,
   EPS_ARRIVAL,
   type WinTieTable,
@@ -87,6 +88,31 @@ export interface RaiseGameOptions {
   mcRunner?: McRunner;
   /** 同時オールインの上限人数（既定 3）。 */
   maxActive?: number;
+  /**
+   * レイズした人のレイズレンジを**仮定して固定**する（A 案）。pos の未開ノードで、range[c]（0..1）の
+   * 頻度でレイズすると決め打ちし、残りの頻度だけをオールインかフォールドに最適化する。レイズされた後の
+   * 全員の判断（オールインで返す・コール・レイズした人の 2 回目）は、このレンジを前提に解かれる。
+   * 省略時はレイズレンジもソルバーが決める（B 案）。均衡のレイズレンジは罠だけの狭いものに
+   * なりがちなので、実際の相手が広くレイズしてくるときはこちらを使う。
+   */
+  fixedRaise?: { pos: Position; range: Float64Array };
+}
+
+/**
+ * 「上位 pct%」のレンジ（0/1 のクラス別頻度）。順位はランダムなハンドに対する勝率順で、コンボ数の
+ * 累計が pct% に届くクラスまでを入れる。レイズレンジのプリセット用。
+ */
+export function topRangeByEquity(pct: number, table: WinTieTable): Float64Array {
+  const order = rankClassesByEquityVs(FULL, table);
+  const out = new Float64Array(NC);
+  const target = (Math.max(0, Math.min(100, pct)) / 100) * TOTAL_COMBOS;
+  let acc = 0;
+  for (const c of order) {
+    if (acc >= target) break;
+    out[c] = 1;
+    acc += COMBO[c]!;
+  }
+  return out;
 }
 
 export interface RaiseRangeOut {
@@ -326,6 +352,23 @@ export async function solveRaiseGame(state: BoardState, opts: RaiseGameOptions =
   // 戦略: ノード → 行動ごとのクラス別頻度（和は 1）。
   const strat: F64[][] = nodes.map((nd) => nd.acts.map(() => new Float64Array(NC).fill(1 / nd.acts.length)));
 
+  // レイズレンジを仮定するとき: その人の未開ノードのレイズ頻度を固定し、残りをオールイン/フォールドに分ける。
+  let fixedNode = -1;
+  const fixedRange = opts.fixedRaise?.range ?? null;
+  if (opts.fixedRaise) {
+    const seat = tree.order.indexOf(opts.fixedRaise.pos);
+    fixedNode = nodes.findIndex((nd) => nd.actor === seat && nd.actionType === 'PU' && nd.acts.includes(RAISE));
+    if (fixedNode < 0) throw new Error(`solveRaiseGame: ${opts.fixedRaise.pos} はレイズできません（スタックが足りないか、席がありません）`);
+    if (opts.fixedRaise.range.length !== NC) throw new Error('solveRaiseGame: fixedRaise.range must have 169 entries');
+    const st = strat[fixedNode]!;
+    for (let c = 0; c < NC; c++) {
+      const r = Math.max(0, Math.min(1, opts.fixedRaise.range[c]!));
+      st[RAISE]![c] = r;
+      st[FOLD]![c] = (1 - r) / 2;
+      st[ALLIN]![c] = (1 - r) / 2;
+    }
+  }
+
   // 終局の値: 席ごとのクラス別値（参加者）と、席ごとの周辺値（定数）。
   const termSeatVal: number[][] = terms.map((_, k) => foldoutVal[k] ?? new Array<number>(n).fill(0));
   const termPcEq: (Map<number, F64> | null)[] = terms.map(() => null);
@@ -515,6 +558,16 @@ export async function solveRaiseGame(state: BoardState, opts: RaiseGameOptions =
       let num = 0;
       let den = 0;
       for (let c = 0; c < NC; c++) {
+        if (d === fixedNode) {
+          // レイズ頻度は仮定で固定。残りの頻度（オールインかフォールド）だけを評価する。
+          const free = 1 - st[RAISE]![c]!;
+          if (free <= 1e-12) continue;
+          const w = COMBO[c]! * free;
+          const cur = (st[FOLD]![c]! * evs[FOLD]![c]! + st[ALLIN]![c]! * evs[ALLIN]![c]!) / free;
+          num += w * (Math.max(evs[FOLD]![c]!, evs[ALLIN]![c]!) - cur);
+          den += COMBO[c]!;
+          continue;
+        }
         const w = COMBO[c]! * prior[c]!;
         let best = -Infinity;
         let cur = 0;
@@ -563,6 +616,16 @@ export async function solveRaiseGame(state: BoardState, opts: RaiseGameOptions =
       if (nd.acts.length < 2) continue;
       const evs = nd.acts.map((_, a) => evOf(d, a));
       const st = strat[d]!;
+      if (d === fixedNode && fixedRange) {
+        // レイズ頻度は動かさず、残りの頻度をオールインかフォールドの良い方へ寄せる。
+        for (let c = 0; c < NC; c++) {
+          const free = 1 - st[RAISE]![c]!;
+          const br = evs[ALLIN]![c]! >= evs[FOLD]![c]! ? ALLIN : FOLD;
+          st[FOLD]![c]! += w * ((br === FOLD ? free : 0) - st[FOLD]![c]!);
+          st[ALLIN]![c]! += w * ((br === ALLIN ? free : 0) - st[ALLIN]![c]!);
+        }
+        continue;
+      }
       for (let c = 0; c < NC; c++) {
         let br = 0;
         for (let a = 1; a < evs.length; a++) if (evs[a]![c]! >= evs[br]![c]!) br = a;

@@ -186,9 +186,11 @@ export function App(): JSX.Element {
       return { res };
     }
     setStackRecovered(!!res.stackRecovered);
-    setForm(res.form);
+    // 読み直しても、選んであるレイズレンジの仮定は引き継ぐ。
+    const nf = res.form.raiser ? { ...res.form, raiseRange: form.raiseRange } : res.form;
+    setForm(nf);
     setLowConf(res.lowConfidenceFields);
-    const built = buildBoardState(res.form);
+    const built = buildBoardState(nf);
     if (built.ok && built.state) setState(built.state);
     setModeNote({ ok: true, text: `「${label}」として読み直しました。下の内容をご確認ください。` });
     return { res, state: built.ok ? built.state : undefined };
@@ -625,6 +627,16 @@ export function App(): JSX.Element {
             unresolvedStacks={unresolvedStacks.filter((p) => state.seats.some((s) => s.pos === p && s.stack === 0))}
             blocked={jobRunning}
             onSolve={() => void solve()}
+            onRaiseRange={
+              state.raiseTo !== undefined
+                ? (pct) => {
+                    const nf = { ...form, raiseRange: pct === null ? '' : String(pct) };
+                    setForm(nf);
+                    const built = buildBoardState(nf);
+                    if (built.ok && built.state) setState(built.state);
+                  }
+                : undefined
+            }
           />
         )}
 

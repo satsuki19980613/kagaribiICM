@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import type { BoardState, Position } from '@kagaribi/core';
 import { isCanonicalKey } from '@kagaribi/core';
-import { solveRaiseGame } from '../src/raiseSolver.js';
+import { solveRaiseGame, topRangeByEquity } from '../src/raiseSolver.js';
+import { HAND_CLASS_ORDER } from '../src/huEquity.js';
 import { solveMultiway } from '../src/nwaySolver.js';
 import { loadHuWinTieTable } from '../src/huWinTieLoader.js';
 import { loadWinTie3Table, winTie3ArtifactExists } from '../src/wintie3Loader.js';
@@ -90,6 +91,43 @@ describe('solveRaiseGame', () => {
       }
       // レイズは最初に参加する人だけ（レイズの後のノードにレイズは無い）。
       for (const n of r.nodes) if (n.key.includes(':R')) expect(n.raise).toBeUndefined();
+    },
+    TIMEOUT,
+  );
+
+  it(
+    'レイズレンジを仮定すると、そのレンジでレイズし、広いレンジほど相手は広くオールインで返す',
+    async () => {
+      const st = spot(['CO', 'BU', 'SB', 'BB'], [12, 20, 8, 15], 2);
+      const narrow = topRangeByEquity(5, winTie);
+      const wide = topRangeByEquity(40, winTie);
+      // 上位 5% は 40% に含まれ、コンボ数の割合はおおよそ指定どおり。
+      const pctOf = (r: Float64Array): number => {
+        let w = 0;
+        HAND_CLASS_ORDER.forEach((label, c) => {
+          if (r[c]! > 0) w += label.length === 2 ? 6 : label.endsWith('s') ? 4 : 12;
+        });
+        return (w / 1326) * 100;
+      };
+      expect(pctOf(narrow)).toBeGreaterThanOrEqual(5);
+      expect(pctOf(narrow)).toBeLessThan(7);
+      expect(pctOf(wide)).toBeGreaterThanOrEqual(40);
+      expect(pctOf(wide)).toBeLessThan(42);
+      for (let c = 0; c < 169; c++) if (narrow[c]! > 0) expect(wide[c]).toBe(1);
+      expect(narrow[HAND_CLASS_ORDER.indexOf('AA')]).toBe(1);
+
+      const a = await solveRaiseGame(st, { winTie, maxIters: 800, fixedRaise: { pos: 'CO', range: narrow } });
+      const b = await solveRaiseGame(st, { winTie, maxIters: 800, fixedRaise: { pos: 'CO', range: wide } });
+      const open = (r: typeof a) => r.nodes.find((n) => n.key === 'CO:-,BU:-,SB:-,BB:-')!;
+      const bbShove = (r: typeof a) => r.nodes.find((n) => n.key === 'CO:R,BU:F,SB:F,BB:-')!;
+      // レイズレンジは仮定したとおり。
+      expect(open(a).raise!.pct).toBeCloseTo(pctOf(narrow), 6);
+      expect(open(b).raise!.pct).toBeCloseTo(pctOf(wide), 6);
+      expect(open(b).raise!.hands).toContain('AA');
+      // 広くレイズする相手には、BB は広くオールインで返せる。
+      expect(bbShove(b).pct).toBeGreaterThan(bbShove(a).pct + 5);
+      // レイズできない席を指定したらエラー。
+      await expect(solveRaiseGame(st, { winTie, fixedRaise: { pos: 'BB', range: wide } })).rejects.toThrow();
     },
     TIMEOUT,
   );

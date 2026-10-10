@@ -2,10 +2,20 @@ import { useState } from 'react';
 import type { Position } from '@kagaribi/core';
 import { positionsForPlayersLeft } from '@kagaribi/core';
 import type { OcrReadout } from '@kagaribi/ocr';
-import { buildBoardState, lineText, reconcilePositions, type AnteScheme, type BoardForm } from '../formModel';
+import {
+  buildBoardState,
+  lineText,
+  reconcilePositions,
+  toggleAllin,
+  RAISE_RANGE_PRESETS,
+  type AnteScheme,
+  type BoardForm,
+} from '../formModel';
 import { HandPicker } from './HandGrid';
 import { ImageModal } from './ImageModal';
 import { Modal } from './ui';
+
+const ACT_LABEL: Record<string, string> = { F: 'FOLD', P: 'ALL IN', C: 'CALL', R: 'RAISE' };
 
 /** 手入力モーダル。妥当なら onSubmit(form) で条件確認へ。写真経由なら元画像と照合しながら直せる。 */
 export function InputForm(props: {
@@ -26,6 +36,7 @@ export function InputForm(props: {
   const preview = buildBoardState(form);
   // レイズした人の候補: HERO より前の席（スクショで HERO 自身がレイズしていたら HERO も）。
   const heroAt = positions.indexOf(form.heroPos);
+  const raiserAt = form.raiser ? positions.indexOf(form.raiser) : -1;
   const raiserOptions = positions.filter((p, i) => i < heroAt || (p === form.heroPos && form.line?.[p] === 'R'));
 
   return (
@@ -92,8 +103,11 @@ export function InputForm(props: {
 
       <label className="lbl">STACKS (bb) ・ ポジションを押して HERO を選ぶ</label>
       <div className="seats-in">
-        {positions.map((pos) => {
+        {positions.map((pos, i) => {
           const hero = form.heroPos === pos;
+          // HERO より前の席は、右のボタンで「前の人のオールイン」を切り替えられる。
+          const act = form.line?.[pos] ?? (pos === form.raiser ? 'R' : i < heroAt ? 'F' : undefined);
+          const canToggle = i < heroAt && pos !== form.raiser && i > raiserAt && form.line?.[form.heroPos] !== 'R';
           return (
             <div key={pos} className={`seat-in${hero ? ' hero' : ''}`}>
               <button
@@ -111,11 +125,30 @@ export function InputForm(props: {
                 value={form.stacks[pos] ?? ''}
                 onChange={(e) => setStack(pos, e.target.value)}
               />
-              <span className="u">{hero ? 'HERO' : 'BB'}</span>
+              {hero ? (
+                <span className="u">HERO</span>
+              ) : act ? (
+                <button
+                  type="button"
+                  className={`act a-${act}`}
+                  disabled={!canToggle}
+                  aria-label={`${pos} のアクション`}
+                  aria-pressed={act === 'P' || act === 'C'}
+                  onClick={() => set({ line: toggleAllin(form, pos) })}
+                >
+                  {ACT_LABEL[act] ?? act}
+                </button>
+              ) : (
+                <span className="u">BB</span>
+              )}
             </div>
           );
         })}
       </div>
+
+      {heroAt > 0 && (
+        <p className="hint">HERO より前の席は、右のボタンで FOLD / ALL IN を切り替えられます（前の人のオールインに対する判断になります）。</p>
+      )}
 
       <label className="lbl" htmlFor="f-rs">RAISE ・ 最初に参加した人のレイズ</label>
       <div className="fgrid">
@@ -146,17 +179,28 @@ export function InputForm(props: {
           />
         </div>
       </div>
-      {!form.raiser && form.line && lineText(positions, form.line) !== 'なし' && (
+      {form.raiser && (
+        <>
+          <label className="lbl" htmlFor="f-rr">RAISE RANGE ・ レイズする人のレンジ</label>
+          <select id="f-rr" className="tin" value={form.raiseRange ?? ''} onChange={(e) => set({ raiseRange: e.target.value })}>
+            <option value="">ソルバーが決める（強いハンドの罠だけになりやすい）</option>
+            {RAISE_RANGE_PRESETS.map((p) => (
+              <option key={p} value={String(p)}>
+                上位 {p}% でレイズすると仮定
+              </option>
+            ))}
+          </select>
+        </>
+      )}
+      {form.line && lineText(positions, form.line) !== 'なし' && (
         <p className="hint">
-          スクショのアクション: {lineText(positions, form.line)}。結果はこのアクションに対する判断として表示します（HERO や人数を変えると消えます）。
+          アクション: {lineText(positions, form.line)}。結果はこのアクションに対する判断として表示します（HERO や人数を変えると消えます）。
+          {form.raiser ? ' レイズの後はオールインかフォールドだけのモデルで解きます。' : ''}
         </p>
       )}
-      {form.raiser && (
+      {form.raiser && !form.line && (
         <p className="hint">
-          {form.line
-            ? `スクショのアクション: ${lineText(positions, form.line)}`
-            : `${form.raiser} より前と、${form.raiser} から HERO までの席はフォールドした扱いです。`}
-          {' '}レイズの後はオールインかフォールドだけのモデルで解きます。
+          {form.raiser} より前と、{form.raiser} から HERO までの席はフォールドした扱いです。レイズの後はオールインかフォールドだけのモデルで解きます。
         </p>
       )}
 

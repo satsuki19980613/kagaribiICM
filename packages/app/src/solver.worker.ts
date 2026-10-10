@@ -4,12 +4,13 @@
  * HU（2人）は同梱 169×169 equity テーブルを fetch して解く。3〜6人は N-way ソルバー。
  */
 
-import type { GameMode } from '@kagaribi/core';
+import type { GameMode, Position } from '@kagaribi/core';
 import { ptDisplayScale } from '@kagaribi/core';
 import { heroNodeKey } from './records/model';
 import {
   solveMultiway,
   solveRaiseGame,
+  topRangeByEquity,
   solveHu,
   loadHuTableBrowser,
   loadHuWinTieTableBrowser,
@@ -243,8 +244,15 @@ self.onmessage = async (e: MessageEvent<SolveRequest | McResultMsg>): Promise<vo
       const ante = state.ante.scheme === 'all' || (state.ante.scheme === 'bb' && state.heroPos === 'BB') ? state.ante.amount : 0;
       if (hero && hero.stack + hero.bet + ante > 25.5) throw new Error(OUT_OF_SCOPE_MSG);
       const [winTie, winTie3] = await Promise.all([getWinTie(), getWinTie3()]);
+      // レイズレンジを「上位 N%」と仮定する指定があれば、レイズした人のレンジを固定して解く。
+      const raiser = Object.entries(state.line ?? {}).find(([, a]) => a === 'R')?.[0] as Position | undefined;
+      let fixedRaise: { pos: Position; range: Float64Array } | undefined;
+      if (state.raiseRange !== undefined && raiser) {
+        if (!winTie) throw new Error('レイズレンジの計算に必要なテーブルを読み込めませんでした。通信できる場所でもう一度お試しください。');
+        fixedRaise = { pos: raiser, range: topRangeByEquity(state.raiseRange, winTie) };
+      }
       const r = await solveRaiseGame(state, {
-        mcRunner, winTie, winTie3, ...(opts?.maxIters ? { maxIters: opts.maxIters } : {}),
+        mcRunner, winTie, winTie3, ...(opts?.maxIters ? { maxIters: opts.maxIters } : {}), ...(fixedRaise ? { fixedRaise } : {}),
       });
       dto = toDto(r as unknown as CommonResult, state.playersLeft, state.heroPos, state.heroHand, state.gameMode, {
         raiseTo: r.raiseTo,

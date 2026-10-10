@@ -95,7 +95,10 @@ export function Result(props: {
           </div>
           {result.raiseTo !== undefined ? (
             <p className="hint">
-              {raiseLineText(state)}。レイズの後はオールインかフォールドだけのモデルで、レイズする人のレンジもソルバーが決めています。
+              {raiseLineText(state)}。レイズの後はオールインかフォールドだけのモデルで、
+              {state.raiseRange !== undefined
+                ? `レイズする人は上位 ${state.raiseRange}% でレイズすると仮定しています。`
+                : 'レイズする人のレンジもソルバーが決めています（狭く出やすいので、相手が広くレイズするなら条件確認で % を選んでください）。'}
             </p>
           ) : (
             result.heroKey && hasAction(state) && <p className="hint">{raiseLineText(state)}。</p>
