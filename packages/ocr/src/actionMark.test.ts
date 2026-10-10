@@ -42,8 +42,12 @@ interface PlateStyle {
 const FOLD: PlateStyle = { fill: [60, 40, 85], ink: [150, 150, 150] };
 /** 能動: 鮮やかな地＋白く発光する枠線・白文字（実測 meanSat 75〜90）。 */
 const ACTIVE: PlateStyle = { fill: [110, 30, 150], ink: [250, 250, 250] };
-/** 彩度が fold 帯と能動帯の“死角”に入る地（hero 席の常設装飾がこの帯に出る・実測 55〜62）。 */
-const DEADZONE: PlateStyle = { fill: [95, 45, 130], ink: [200, 200, 200] };
+/**
+ * 彩度が fold 帯と能動帯の“死角”に入る地（hero 席の常設装飾がこの帯に出る・実測 55〜62）。
+ * 実物はスタックの金枠なので、色も金（紫ではない）にしてある。紫で同じ明るさの地は、色が薄く
+ * 保存された能動のプレート（実測 129）と区別できず、地の紫から探す経路が能動として読む。
+ */
+const DEADZONE: PlateStyle = { fill: [130, 95, 45], ink: [200, 200, 200] };
 
 function blank(): Uint8Array {
   const data = new Uint8Array(W * H * 4);
@@ -280,6 +284,26 @@ describe('明るい背景の卓（枠線が背景とつながる）', () => {
   it('語が能動なのに地が沈んでいたら、予備の経路でも none（彩度ゲート）', () => {
     const img = renderPlate(WORD_RAISE, FOLD, PLATE, bright());
     expect(recognizeMark(img, ZONE, templates, OPTS).value).toBe('none');
+  });
+
+  it('色が薄く保存されて能動の地が少し暗くなっても読める（彩度 0.7 倍で地の明るさ 129）', () => {
+    const pale: PlateStyle = { fill: [96, 52, 129], ink: [250, 250, 250] };
+    const img = renderPlate(WORD_RAISE, pale, PLATE, bright());
+    expect(recognizeMark(img, ZONE, templates, OPTS).value).toBe('raise');
+    // フォールドと能動の間の明るさ（105〜118）は、どちらでもないとして捨てる。
+    const between: PlateStyle = { fill: [84, 48, 112], ink: [250, 250, 250] };
+    expect(recognizeMark(renderPlate(WORD_RAISE, between, PLATE, bright()), ZONE, templates, OPTS).value).toBe('none');
+  });
+
+  it('色相が青寄りにずれて紫の赤みが減っても、緩めた条件で探し直して読める', () => {
+    // 色相を −10° 回した画像の実測: フォールドの地 (47,32,91)・能動の地 (78,51,168)。
+    // 赤と緑の差が既定の下限（12）を下回ると、既定のマスクでは紫として拾えない。
+    const fold = renderPlate(WORD_FOLD, { fill: [42, 34, 91], ink: [150, 150, 150] }, PLATE, bright());
+    const raise = renderPlate(WORD_RAISE, { fill: [60, 51, 168], ink: [250, 250, 250] }, PLATE, bright());
+    expect(locateMarkPlatesByBody(fold, ZONE, OPTS)).toEqual([]);
+    expect(locateMarkPlatesByBody(raise, ZONE, OPTS)).toEqual([]);
+    expect(recognizeMark(fold, ZONE, templates, OPTS).value).toBe('fold');
+    expect(recognizeMark(raise, ZONE, templates, OPTS).value).toBe('raise');
   });
 });
 

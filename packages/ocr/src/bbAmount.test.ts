@@ -224,6 +224,58 @@ describe('readAmountBbAnchored (two-anchor 名前アンカー)', () => {
     const r = readAmountBbAnchored(img, rect, digits, { minCh: 100 }, letters);
     expect(r.value).toBeCloseTo(0.2, 5);
   });
+
+  // --- 4 つ目の組（2026-10-11）で見つかった誤読の回帰防止 ---
+  // 実物の数字は幅が高さの 0.87 倍。上の検査用の形（0.63 倍）では桁の間隔の比が実物と合わないので、
+  // 間隔を見る検査には幅の広い形を使う。
+  const TWO_W = glyph(['#######', '......#', '......#', '#######', '#......', '#......', '#......', '#######']);
+  const ZERO_W = glyph(['#######', '#.....#', '#.....#', '#.....#', '#.....#', '#.....#', '#.....#', '#######']);
+  const BEE_W = glyph(['#######', '#.....#', '#.....#', '#######', '#.....#', '#.....#', '#######', '#######']);
+  const digitsW: Template[] = [{ label: '2', img: TWO_W }, { label: '0', img: ZERO_W }];
+  const lettersW: Template[] = [{ label: 'B', img: BEE_W }];
+  const paint = (img: Rgba, x0: number, y0: number, w: number, h: number): void => {
+    for (let y = y0; y < y0 + h; y++) for (let x = x0; x < x0 + w; x++) {
+      const s = (y * img.w + x) * 4; img.data[s] = 255; img.data[s + 1] = 255; img.data[s + 2] = 255;
+    }
+  };
+
+  it('小数点 1 つぶん空いているのに点が見つからなければ、補って信頼度を下げる（"2 2 BB" → 2.2）', () => {
+    // 桁の中心の間隔 = 28 + 3 + 12 + 3 = 46 px（高さ 32 の 1.44 倍）。点は描かない。
+    const img = hcat(render([TWO_W]), render([TWO_W, BEE_W, BEE_W]), 12);
+    const r = readAmountBbAnchored(img, full(img), digitsW, { minCh: 100 }, lettersW);
+    expect(r.value).toBeCloseTo(2.2, 5);
+    expect(r.conf).toBeLessThanOrEqual(0.7);
+    // 点があれば、同じ間隔でも信頼度は下げない。
+    paint(img, render([TWO_W]).w + 3, img.h - 3 - 6, 6, 6);
+    const withDot = readAmountBbAnchored(img, full(img), digitsW, { minCh: 100 }, lettersW);
+    expect(withDot.value).toBeCloseTo(2.2, 5);
+    expect(withDot.conf).toBeGreaterThan(0.7);
+  });
+
+  it('詰まった桁の間のにじみを小数点と数えた読みは、自信のある読みとして扱わない（"22" の間に点）', () => {
+    const img = render([TWO_W, TWO_W, BEE_W, BEE_W]);
+    const clean = readAmountBbAnchored(img, full(img), digitsW, { minCh: 100 }, lettersW);
+    expect(clean.value).toBe(22);
+    expect(clean.conf).toBeGreaterThan(0.5);
+    // 2 つの桁の隙間（3 px）の真ん中に、どちらにも触れない 1 px 幅の点を置く。
+    paint(img, 3 + TWO_W.w + 1, img.h - 3 - 5, 1, 5);
+    const r = readAmountBbAnchored(img, full(img), digitsW, { minCh: 100 }, lettersW);
+    expect(r.conf).toBeLessThanOrEqual(0.5);
+  });
+
+  it('数字のすぐ左に読めていない塊があれば、自信のある読みとして扱わない（つながった桁）', () => {
+    // 隣り合う桁がつながった塊に見立てた、幅の広い白い塊。数字としては拾えない。
+    const BLOCK: Gray = { w: 60, h: 32, data: new Uint8Array(60 * 32).fill(255) };
+    const near = hcat(render([BLOCK]), render([TWO, ZERO, BEE, BEE]), 2);
+    const r = readAmountBbAnchored(near, { x: 68, y: 0, w: near.w - 68, h: near.h }, digits, { minCh: 100 }, letters);
+    expect(r.value).toBe(20);
+    expect(r.conf).toBeLessThanOrEqual(0.5);
+    // 離れていれば（バッジや飾り）、読みの信頼度には影響しない。
+    const far = hcat(render([BLOCK]), render([TWO, ZERO, BEE, BEE]), 40);
+    const ok = readAmountBbAnchored(far, { x: 106, y: 0, w: far.w - 106, h: far.h }, digits, { minCh: 100 }, letters);
+    expect(ok.value).toBe(20);
+    expect(ok.conf).toBeGreaterThan(0.5);
+  });
 });
 
 describe('stackEndsWithBb / detectDisplayMode', () => {

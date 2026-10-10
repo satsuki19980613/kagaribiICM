@@ -105,12 +105,15 @@ export interface ActionMarkOptions {
   readonly activeSatMin?: number;
   /**
    * 地の紫から見つけたプレート（`locateMarkPlatesByBody`）の、フォールド／能動の見分け。彩度ではなく
-   * **地の明るさ**（紫の画素の最大チャンネルの平均）で分ける。既定: 105 以下がフォールド、132 以上が能動。
+   * **地の明るさ**（紫の画素の最大チャンネルの平均）で分ける。既定: 105 以下がフォールド、118 以上が能動。
    *
    * 彩度は画像全体の色の濃さに引きずられる（別の色空間で保存された、色を変換せずに開かれた等）。
    * 評価 2026-10-10: 彩度 0.8 倍の画像で「レイズ」が 61 に落ち、1.25 倍の画像で「フォールド」が 49 を
    * 超え、どちらも死角に入って見落とした。地の明るさは、同じ 36 枚でフォールド 64〜91・能動 137〜173 と
-   * 大きく離れ、彩度・明るさ・再圧縮を変えても重ならなかった。間（105〜132）はどちらでもないとして捨てる。
+   * 大きく離れ、彩度・明るさ・再圧縮を変えても重ならなかった。間（105〜118）はどちらでもないとして捨てる。
+   * 能動の下限は、はじめ 132 にしていた。彩度を 0.7 倍にした画像で「レイズ」の地が 129 まで下がり
+   * （色を薄めると、紫のいちばん明るいチャンネルも下がる）、死角に入って見落としたので、2 つの山
+   * （フォールド 64〜91・能動 129〜173）の間の、フォールド寄りに置き直した。
    */
   readonly bodyVFoldMax?: number;
   readonly bodyVActiveMin?: number;
@@ -277,8 +280,15 @@ export function locateMarkPlate(img: Rgba, searchRect: Rect, opts: ActionMarkOpt
   return plateFromSpan(img, x0, y0, mask, span, opts.plateHOverW ?? 0.36);
 }
 
-/** プレートの地の紫（B > R > G）のマスク。帯は画像内に切り詰める（`whiteMask` と同じ原点）。 */
-function purpleBodyMask(img: Rgba, rect: Rect): Gray {
+/**
+ * プレートの地の紫（B > R > G）のマスク。帯は画像内に切り詰める（`whiteMask` と同じ原点）。
+ *
+ * `minRG` は「赤が緑よりどれだけ強いか」の下限（既定 12）。色相が青寄りにずれた画像（別の色空間で
+ * 保存された等）では紫の赤みが減り、地の画素の半分がこの条件から外れて行のランが切れる（評価
+ * 2026-10-10: 色相を −10° 回した画像で、フォールドの地の R−G が中央値 36 → 15、能動は 75 → 28）。
+ * 呼び側は、既定で見つからなかったときだけ緩めた値（`BODY_LOOSE_MIN_RG`）で探し直す。
+ */
+function purpleBodyMask(img: Rgba, rect: Rect, minRG: number): Gray {
   const x0 = Math.max(0, Math.floor(rect.x));
   const y0 = Math.max(0, Math.floor(rect.y));
   const x1 = Math.min(img.w, Math.floor(rect.x) + rect.w);
@@ -289,7 +299,7 @@ function purpleBodyMask(img: Rgba, rect: Rect): Gray {
     for (let x = 0; x < w; x++) {
       const s = ((y0 + y) * img.w + (x0 + x)) * 4;
       const R = img.data[s]!, G = img.data[s + 1]!, B = img.data[s + 2]!;
-      if (R - G >= 12 && B - R >= 8 && B - G >= 30) data[y * w + x] = 255;
+      if (R - G >= minRG && B - R >= 8 && B - G >= 30) data[y * w + x] = 255;
     }
   return { w, h, data };
 }
@@ -312,10 +322,15 @@ function purpleBodyMask(img: Rgba, rect: Rect): Gray {
  * 矩形で、能動（レイズ 0.75）もフォールド（0.79）も同じだった。呼び側は全候補を同じゲートにかけ、
  * 通ったうち最も一致したものを採る。
  */
-export function locateMarkPlatesByBody(img: Rgba, searchRect: Rect, opts: ActionMarkOptions = {}): MarkPlate[] {
+export function locateMarkPlatesByBody(
+  img: Rgba,
+  searchRect: Rect,
+  opts: ActionMarkOptions = {},
+  minRG: number = BODY_MIN_RG,
+): MarkPlate[] {
   const x0 = Math.max(0, Math.floor(searchRect.x));
   const y0 = Math.max(0, Math.floor(searchRect.y));
-  const mask = purpleBodyMask(img, searchRect);
+  const mask = purpleBodyMask(img, searchRect, minRG);
   if (mask.w === 0 || mask.h === 0) return [];
   const plateW = (opts.plateWFrac ?? 0.054) * img.w;
   const inner = plateSpanFromMask(mask, plateW, opts);
@@ -356,6 +371,9 @@ export function locateMarkPlatesByBody(img: Rgba, searchRect: Rect, opts: Action
   return out;
 }
 
+/** 地の紫と見なす、赤と緑の差の下限。既定と、既定で読めなかったときの緩めた値。 */
+const BODY_MIN_RG = 12;
+const BODY_LOOSE_MIN_RG = 4;
 /** 枠の厚み（地の幅比）。彩度を測る外側の矩形に使う。 */
 const BODY_BORDER_FRAC = 0.03;
 /** 地の矩形を横に内へ寄せる量（地の幅比）の候補。 */
@@ -445,7 +463,7 @@ function judgePlate(
     plate.byBody && plate.bodyV !== undefined
       ? isDimWord(action)
         ? plate.bodyV <= (opts.bodyVFoldMax ?? 105)
-        : plate.bodyV >= (opts.bodyVActiveMin ?? 132)
+        : plate.bodyV >= (opts.bodyVActiveMin ?? 118)
       : isDimWord(action)
         ? sat >= (opts.foldSatMin ?? 25) && sat <= (opts.foldSatMax ?? 49)
         : sat >= (opts.activeSatMin ?? 68);
@@ -458,7 +476,8 @@ function judgePlate(
  *
  * 枠線から矩形を取り（`locateMarkPlate`）、それでマークを読めなかったときだけ、プレートの地の紫
  * から取った矩形の候補（`locateMarkPlatesByBody`）を同じゲートにかけ、通ったうち最も一致したものを採る。枠線で読めたフレームの
- * 結果は変わらない。予備の矩形もゲートを全部通らなければ、従来どおり 'none'。
+ * 結果は変わらない。それでも読めなければ、紫の条件を緩めてもう一度だけ探す（色相がずれた画像）。
+ * 予備の矩形もゲートを全部通らなければ、従来どおり 'none'。
  */
 export function recognizeMarkDiag(
   img: Rgba,
@@ -472,9 +491,13 @@ export function recognizeMarkDiag(
     : { read: { value: 'none' as const, conf: 0.9 }, diag: { plate: null, ink: 0, label: '', rawConf: 0, rejected: 'plate' as const } };
   if (first.read.value !== 'none') return first;
   let best = first;
-  for (const body of locateMarkPlatesByBody(img, searchRect, opts)) {
-    const r = judgePlate(img, body, templates, opts);
-    if (r.read.value !== 'none' && (best.read.value === 'none' || r.read.conf > best.read.conf)) best = r;
+  for (const minRG of [BODY_MIN_RG, BODY_LOOSE_MIN_RG]) {
+    for (const body of locateMarkPlatesByBody(img, searchRect, opts, minRG)) {
+      const r = judgePlate(img, body, templates, opts);
+      if (r.read.value !== 'none' && (best.read.value === 'none' || r.read.conf > best.read.conf)) best = r;
+    }
+    // 既定の色で読めたら、緩めた色では探さない（読めていたフレームの結果を変えない）。
+    if (best.read.value !== 'none') break;
   }
   return best;
 }

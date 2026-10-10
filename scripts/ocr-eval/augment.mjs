@@ -9,6 +9,7 @@
 //   node scripts/ocr-eval/augment.mjs          （= npm run ocr:augment）
 //   node scripts/ocr-eval/augment.mjs holdout  （別条件の組に入れ替える）
 //   node scripts/ocr-eval/augment.mjs fresh    （さらに別条件。きつい条件を含む）
+//   node scripts/ocr-eval/augment.mjs check    （4 つ目。直したあとの確認用）
 //   → ocr-local/images/aug__<種類>__<元の名前>.<拡張子> と、truth.json の generated な項目を作り直す
 import { readFileSync, readdirSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -71,7 +72,29 @@ const FRESH = [
   { name: 'sat85-bright93-jpeg80', kind: '組み合わせ', ext: 'jpg', run: (s) => s.modulate({ saturation: 0.85, brightness: 0.93 }).jpeg({ quality: 80 }) },
   { name: 'w2000-sat110-jpeg70', kind: '組み合わせ', ext: 'jpg', run: (s) => s.resize({ width: 2000 }).modulate({ saturation: 1.1 }).jpeg({ quality: 70 }) },
 ];
-const variants = process.argv[2] === 'holdout' ? HOLDOUT : process.argv[2] === 'fresh' ? FRESH : VARIANTS;
+// 4 つ目（`... augment.mjs check`）。上の 3 組はどれも誤りを直すのに使ったので、直したあとの確認に使う。
+// コントラストの変更と、明るさ・彩度・縮小・再圧縮の組み合わせを足してある。
+const CHECK = [
+  ...[2160, 1500, 1200].map((w) => ({ name: `w${w}`, kind: '縮小・拡大', ext: 'png', run: (s) => s.resize({ width: w }).png() })),
+  ...[65, 35].map((q) => ({ name: `jpeg${q}`, kind: 'JPEG', ext: 'jpg', run: (s) => s.jpeg({ quality: q }) })),
+  { name: 'webp50', kind: 'WebP', ext: 'webp', run: (s) => s.webp({ quality: 50 }) },
+  { name: 'w1334-jpeg60', kind: '縮小＋JPEG', ext: 'jpg', run: (s) => s.resize({ width: 1334 }).jpeg({ quality: 60 }) },
+  { name: 'w1500-webp70', kind: '縮小＋WebP', ext: 'webp', run: (s) => s.resize({ width: 1500 }).webp({ quality: 70 }) },
+  { name: 'sat145', kind: '色', ext: 'png', run: (s) => s.modulate({ saturation: 1.45 }).png() },
+  { name: 'sat60', kind: '色', ext: 'png', run: (s) => s.modulate({ saturation: 0.6 }).png() },
+  { name: 'bright130', kind: '色', ext: 'png', run: (s) => s.modulate({ brightness: 1.3 }).png() },
+  { name: 'bright70', kind: '色', ext: 'png', run: (s) => s.modulate({ brightness: 0.7 }).png() },
+  { name: 'gamma22', kind: '色', ext: 'png', run: (s) => s.gamma(2.2).png() },
+  { name: 'hue-10', kind: '色', ext: 'png', run: (s) => s.modulate({ hue: -10 }).png() },
+  { name: 'contrast120', kind: 'コントラスト', ext: 'png', run: (s) => s.linear(1.2, -25).png() },
+  { name: 'contrast80', kind: 'コントラスト', ext: 'png', run: (s) => s.linear(0.8, 25).png() },
+  { name: 'blur20', kind: 'ぼけ', ext: 'png', run: (s) => s.blur(2.0).png() },
+  { name: 'bright115-sat120-jpeg60', kind: '組み合わせ', ext: 'jpg', run: (s) => s.modulate({ brightness: 1.15, saturation: 1.2 }).jpeg({ quality: 60 }) },
+  { name: 'w1400-bright85-jpeg55', kind: '組み合わせ', ext: 'jpg', run: (s) => s.resize({ width: 1400 }).modulate({ brightness: 0.85 }).jpeg({ quality: 55 }) },
+  { name: 'w1800-sat75-webp60', kind: '組み合わせ', ext: 'webp', run: (s) => s.resize({ width: 1800 }).modulate({ saturation: 0.75 }).webp({ quality: 60 }) },
+];
+const SETS = { holdout: HOLDOUT, fresh: FRESH, check: CHECK };
+const variants = SETS[process.argv[2]] ?? VARIANTS;
 
 let truth;
 try {

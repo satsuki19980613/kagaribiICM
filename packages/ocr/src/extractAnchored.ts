@@ -62,6 +62,7 @@ import { findCardRects, largestCardRects } from './detect.js';
 import { recognizeHeroHandColor } from './cards.js';
 import type { HandActiveRule } from './frameProfile.js';
 import { isTableConsistentBlinds, resolveBlindChips } from './blindLevels.js';
+import { stretchWhite } from './whiteLevel.js';
 
 export interface AnchorTemplates {
   readonly digits: readonly Template[];
@@ -183,6 +184,13 @@ const BUTTON_ANCHORS: readonly FracPoint[] = [
 const BB_SCORE_FLOOR = 0.45;
 
 /**
+ * ポットの白文字のしきい値。既定（potAnchor の 180）で読めなかったときだけ順に上げる。
+ * ポットの帯は半透明の暗い地で、背景が明るい卓の画像が明るく保存されていると、地が 180 を越えて
+ * 数字とつながる（評価 2026-10-10: ピンクの卓を明るさ 1.2 倍にした画像で、地が 140〜180・数字は 240 以上）。
+ */
+const POT_MINCH_SEQ: readonly (number | undefined)[] = [undefined, 215, 235];
+
+/**
  * whiteMask の minCh を段階的に上げて BB スタックを読む。席プレートの背景明度・ホログラム飾りの
  * 強さが席／機種で異なり単一 minCh では両立しない（実測: BL・iOS TL は 168 が必要, TC/TR は 120 で
  * ないと NaN, 150 は sparkle 混入で **高信頼の誤読** を出す罠）。順序 [120,168,185,150] で最初に
@@ -192,12 +200,37 @@ const BB_SCORE_FLOOR = 0.45;
  * iOS 下段（BR/BC）・hero の手番グロー枠等でグリフ明度が沈む席向けに、より低い minCh（96/80）も
  * 末尾に足す（120 で NaN の席だけ降段。上段の順序は不変＝回帰なし）。低 minCh は felt/隣接の弱い
  * 白を拾いやすいが scoreFloor＋BB アンカー（直左数字を持つ BB のみ）が偽桁を除外する。
+ *
+ * どれでも読めなかったときだけ、さらに高いしきい値（215・235）を試す。数字は純白（250 前後）で、
+ * 画像全体が明るく保存されていると、札の地（ピンクの札で 180〜200）やベットの帯の地（灰 140〜180）が
+ * 185 を越えて数字とつながる（評価 2026-10-10: 明るさ 1.2 倍の画像で hero の 95.9 と「1 BB」が未読）。
  */
-const MINCH_SEQ = [120, 168, 185, 150, 96, 80] as const;
+const MINCH_SEQ = [120, 168, 185, 150, 96, 80, 215, 235] as const;
 /** しきい値のうち、読みを比べてよい主の 3 つ。 */
 const MAIN_MINCH: ReadonlySet<number> = new Set([120, 168, 185]);
 /** 最初の読みの信頼度がこれ未満なら、ほかの主のしきい値も試す（確認画面の強調のしきい値と同じ）。 */
 const RETRY_BELOW_CONF = 0.8;
+/** 読んだ数値の桁の数（小数点は数えない）。 */
+const digitCount = (v: number): number => String(v).replace('.', '').length;
+/** 桁の数が食い違った読みに付ける信頼度の上限（確認画面で強調される）。 */
+const DISAGREE_CONF = 0.7;
+/** 桁の多い読みを、一致の良い「桁の少ない読み」より優先するのに必要な、桁の多い読みの信頼度。 */
+const LONGER_KEEP_CONF = 0.6;
+/**
+ * 同じ数値の 2 つの読み（しきい値違い・探索位置違い）から、採るほうを決める。
+ *
+ * 基本は一致の良いほう。ただし**桁が減った読み**には乗り換えない: しきい値を上げると暗めの桁が
+ * 丸ごと消え、残りだけがきれいに読めて一致が上がる（評価 2026-10-10: 120 で 3.1〔0.77〕、168 で
+ * 3 が消えて 1〔1.00〕）。例外は、桁の多いほうの一致が低いとき（文字の一致そのものが低い、または
+ * bbAmount が「桁を落とした・左に読めていない塊がある」として 0.5 以下に抑えた）—— 飾り線を 1 桁と
+ * 数えた読みが、正しい読みを押しのけないようにする（実測: 168 で 10.5〔0.50〕、185 で 0.5〔0.85〕）。
+ * どちらを採っても、桁の数が食い違ったこと自体が怪しいので、信頼度を下げて確認を促す。
+ */
+export function betterRead(a: Read<number>, b: Read<number>): Read<number> {
+  const da = digitCount(a.value), db = digitCount(b.value);
+  const pick = b.conf > a.conf && (db >= da || a.conf < LONGER_KEEP_CONF) ? b : a;
+  return da === db ? pick : { value: pick.value, conf: Math.min(pick.conf, DISAGREE_CONF) };
+}
 function readStackAnchored(
   img: Rgba,
   sr: Rect,
@@ -216,7 +249,7 @@ function readStackAnchored(
     if (!best && r.conf >= RETRY_BELOW_CONF) return r;
     // 自信の無い読み（再圧縮された画像で、札の地の模様が数字に混ざる等）は、主のしきい値の残りも
     // 試して、いちばん一致の良いものを採る（実測: JPEG の hero 席で 120 は 96.9〔0.68〕、185 は 95.9〔0.89〕）。
-    if (!best || r.conf > best.conf) best = r;
+    best = best ? betterRead(best, r) : r;
     if (!MAIN_MINCH.has(minCh)) break;
   }
   return best ?? { value: NaN, conf: 0 };
@@ -512,8 +545,10 @@ const HERO_CARD_SPLIT = -0.066;
 /**
  * アンカー抽出のメイン。img は任意解像度／アスペクト。RawReads（extractRawReads と同形）を返す。
  */
-export function extractAnchored(img: Rgba, templates: AnchorTemplates, opts: AnchorOptions = {}): RawReads {
+export function extractAnchored(src: Rgba, templates: AnchorTemplates, opts: AnchorOptions = {}): RawReads {
   const { digits, ranks, letters, actions, marks } = templates;
+  // 画像全体が暗く保存されていたら、白が 255 になるように明るさを戻してから読む（whiteLevel.ts）。
+  const img = stretchWhite(src);
   const scoreFloor = opts.scoreFloor ?? BB_SCORE_FLOOR;
 
   // §B2/§B3: 正規化してから席列挙。normalizeForAnchors は決定的なので enumerateSeats が内部で
@@ -592,11 +627,16 @@ export function extractAnchored(img: Rgba, templates: AnchorTemplates, opts: Anc
   // pot（§B5）: BB 表示は中央ピルを BB アンカーで、chips は中央矩形の生読み→正規化。
   let pot: Read<number>;
   if (mode === 'bb') {
-    let p = readPotAnchored(nimg, digits, letters, { scoreFloor: 0 }, opts.potRegion);
-    // タイト帯で読めない稀なフレーム（実測 143002: ピル数字がにじむ）は広い帯で再挑戦。値がずれても
-    // 有限にして棄却を避ける（下流の zod は pot に finite を要求, 精度は confidence で下げる）。
-    if (!Number.isFinite(p.value) && !opts.potRegion) {
-      p = readPotAnchored(nimg, digits, letters, { scoreFloor: 0 }, { x: 0.42, y: 0.29, w: 0.17, h: 0.08 });
+    let p: Read<number> = { value: NaN, conf: 0 };
+    for (const minCh of POT_MINCH_SEQ) {
+      const potOpts = minCh === undefined ? { scoreFloor: 0 } : { scoreFloor: 0, minCh };
+      p = readPotAnchored(nimg, digits, letters, potOpts, opts.potRegion);
+      // タイト帯で読めない稀なフレーム（実測 143002: ピル数字がにじむ）は広い帯で再挑戦。値がずれても
+      // 有限にして棄却を避ける（下流の zod は pot に finite を要求, 精度は confidence で下げる）。
+      if (!Number.isFinite(p.value) && !opts.potRegion) {
+        p = readPotAnchored(nimg, digits, letters, potOpts, { x: 0.42, y: 0.29, w: 0.17, h: 0.08 });
+      }
+      if (Number.isFinite(p.value)) break;
     }
     pot = { value: p.value, conf: p.conf };
   } else {
@@ -683,7 +723,7 @@ export function extractAnchored(img: Rgba, templates: AnchorTemplates, opts: Anc
         if (!Number.isFinite(stack.value) || stack.conf < RETRY_BELOW_CONF) {
           const fr = stackFallbackRect(nimg, s.slot, s.nameBox.cx, robustNameH);
           const fb = readStackAnchored(nimg, fr, s.nameBox.cx, digits, letters, scoreFloor);
-          if (Number.isFinite(fb.value) && (!Number.isFinite(stack.value) || fb.conf > stack.conf)) stack = fb;
+          if (Number.isFinite(fb.value)) stack = Number.isFinite(stack.value) ? betterRead(stack, fb) : fb;
         }
       } else {
         // chips: 名前直上帯を生読み → BB 正規化（chips は §B7 で棄却対象なので精度は不問）。

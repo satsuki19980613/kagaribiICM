@@ -110,8 +110,14 @@ function glyphComponents(mask: Gray): RawComp[] {
 
 /** 数字ごとの「囲まれた穴」の数（このゲームの書体）。 */
 const DIGIT_HOLES: Readonly<Record<string, number>> = { '0': 1, '1': 0, '2': 0, '3': 0, '4': 1, '5': 0, '6': 1, '7': 0, '8': 2, '9': 1 };
-/** 1 位と 2 位の一致の差がこれ未満なら、穴の数で決め直す。 */
-const HOLE_TIE_GAP = 0.06;
+/**
+ * 1 位と 2 位の一致の差がこれ未満なら、穴の数で決め直す。
+ *
+ * 決め直すのは「成分の穴の数が 1 位の数字と合わず、2 位の数字と合う」ときだけなので、差だけで決まる
+ * わけではない。実測（幅 1100 に縮小して JPEG 50 で保存した画像）: 6 を 5〔0.82〕と読み、6 は 0.73 で
+ * 差 0.09、成分の穴は 1 つ（＝6）。同じ画像の本物の 5 は、6 との差が 0.17〜0.19 で穴は 0。
+ */
+const HOLE_TIE_GAP = 0.12;
 
 /** 成分の外接矩形の中で、縁につながっていない背景のかたまり（＝穴）を数える。小さすぎるものは無視。 */
 function countHoles(mask: Gray, c: Rect): number {
@@ -371,6 +377,23 @@ const B_FIRST_MIN = 0.75;
 const B_BOTH_MIN = 0.8;
 /** 1 つ目の B の左の空白が、2 文字の隙間よりこれだけ（文字の高さ比）広いこと。 */
 const BB_SPACE_MARGIN = 0.25;
+/**
+ * 読みの**構造**に疑いがあるとき（数値の並びの中の成分を落とした・数字の左に読めていない塊がある）の
+ * 信頼度の上限。文字の一致が良くても、桁が欠けているかもしれない読みはこれ以下に抑える。
+ */
+const STRUCT_DOUBT_CONF = 0.5;
+/**
+ * 隣り合う桁の中心の間隔（文字の高さ比）のしきい値。実測: 小数点なし 0.98〜1.12、あり 1.29〜1.47。
+ *  - 小数点があるのに、これ未満: 疑う（値は変えない）。
+ *  - 小数点が無いのに、INSERT 以上 MISSING 以下: 小数点を補う。MISSING を超えたら桁が抜けているとして疑う。
+ */
+const DOT_DOUBT_PITCH = 1.15;
+const DOT_INSERT_PITCH = 1.25;
+const DOT_MISSING_PITCH = 1.7;
+/** 数字の左の「読めていない塊」と見なす隙間の上限（文字の高さ比）。桁どうしの隙間は 0.1〜0.2、小数点をはさんで 0.5 前後。 */
+const LEFTOVER_MAX_GAP = 0.6;
+/** 領域の端に接した成分を「切れた文字」と見なす、一致の下限。 */
+const CLIPPED_MIN_SCORE = 0.4;
 /** 先頭の数字を拾い直すときの、数字テンプレとの一致の下限（飾り線の誤一致は実測 0.79 まで）。 */
 const LEAD_MIN_SCORE = 0.85;
 /** 先頭の数字を拾い直す窓に必要なインクの割合（何も無い場所を照合しない）。 */
@@ -467,7 +490,8 @@ function readAnchoredOnce(
     return { c, label: m.label, score: m.score, bScore };
   });
   // 数字か B にそこそこ一致する成分が、領域の上端か下端に接している＝文字が切れている。
-  if (labeled.some((l) => l.score >= 0.5 && (l.c.y <= 0 || l.c.y + l.c.h >= mask.h) && l.c.h >= 8)) info.clipped = true;
+  // 切れた文字の一致は低い（実測: 上 3 割が切れた "BB" は、どちらも 0 に 0.47〜0.49）ので、下限は低めに置く。
+  if (labeled.some((l) => l.score >= CLIPPED_MIN_SCORE && (l.c.y <= 0 || l.c.y + l.c.h >= mask.h) && l.c.h >= 8)) info.clipped = true;
   const isDigit = (l: string): boolean => l.length === 1 && l >= '0' && l <= '9';
   // 隣り合う 2 成分が "BB" の組か（どちらも B と読め、同じ高さ・近接・同じベースライン）。
   // i の右隣の「同じ行の成分」。x 順の並びには、行の外の小さな欠片（上の飾り・下のバッジの一部）が
@@ -640,11 +664,11 @@ function readAnchoredOnce(
   ].sort((a, b) => a.x - b.x);
 
   const scoreFloor = opts.scoreFloor ?? 0;
-  let text = '';
   let minScore = 1;
   let dropped = false;
+  const toks: { readonly comp: RawComp; readonly ch: string }[] = [];
   for (const it of items) {
-    if (it.dot) { text += '.'; continue; }
+    if (it.dot) { toks.push({ comp: it.comp, ch: '.' }); continue; }
     const m = bestMatch(normGlyph(strip, it.comp), templates);
     if (m.score < scoreFloor) {
       // 数値の並びの中の成分を「数字ではない」として落とした: 桁が 1 つ欠けた読みかもしれないので、
@@ -653,9 +677,32 @@ function readAnchoredOnce(
       if (core.has(it.comp)) dropped = true;
       continue;
     }
-    text += breakTieByHoles(mask, strip, it.comp, templates, m);
+    toks.push({ comp: it.comp, ch: breakTieByHoles(mask, strip, it.comp, templates, m) });
     const s = matchConfidence(m);
     if (s < minScore) minScore = s;
+  }
+  // 小数点と、桁どうしの間隔の整合。桁の中心の間隔は、小数点をはさまなければ文字の高さの 0.9〜1.1 倍、
+  // はさめば 1.3〜1.5 倍（小数点の幅ぶん広い）。ぼけた画像では、桁の間のにじみを小数点と数えたり
+  // （98 → 9.8）、暗くなった小数点を落としたりする（96.5 → 965）ので、間隔と食い違う読みを直す・疑う。
+  let text = '';
+  let dotDoubt = false, dotInserted = false;
+  for (let k = 0; k < toks.length; k++) {
+    const t = toks[k]!;
+    text += t.ch;
+    if (t.ch === '.') continue;
+    let n = k + 1, hasDot = false;
+    while (toks[n]?.ch === '.') { hasDot = true; n++; }
+    const next = toks[n];
+    if (!next) continue;
+    const pitch = next.comp.x + next.comp.w / 2 - (t.comp.x + t.comp.w / 2);
+    if (hasDot) {
+      // 小数点が入るだけの間隔が無い: にじみを小数点と数えたかもしれない。
+      if (pitch < DOT_DOUBT_PITCH * gh) dotDoubt = true;
+    } else if (pitch >= DOT_INSERT_PITCH * gh) {
+      // 小数点 1 つぶん空いているのに、点が見つからなかった: 補う。もっと広ければ桁が抜けている。
+      if (pitch <= DOT_MISSING_PITCH * gh) { text += '.'; dotInserted = true; }
+      else dotDoubt = true;
+    }
   }
   // 表示は "0.5 BB" の形で、0 で始まる 2 桁以上の数（"05"）は存在しない。小数点（数 px の点）を
   // 拾えなかっただけなので補い、確認画面で強調されるよう信頼度を下げる。
@@ -665,7 +712,22 @@ function readAnchoredOnce(
   }
   // 小数点で始まる数（".8"）は表示に無い。先頭の桁を拾えていないので、読めなかったことにする。
   if (text.startsWith('.')) return { value: NaN, conf: 0 };
-  if (dropped) minScore = Math.min(minScore, 0.5);
+  if (dropped || dotDoubt) minScore = Math.min(minScore, STRUCT_DOUBT_CONF);
+  if (dotInserted) minScore = Math.min(minScore, 0.7);
+  // 採った数字のすぐ左に、数字と同じ高さの塊が残っている: 隣り合う桁どうしがつながって 1 つの塊になり
+  // （ぼけた画像・縮小した画像で起きる）、数字として拾えなかった桁かもしれない。右側の桁だけを読んだ
+  // 数値を、自信のある読みとしては扱わない（評価 2026-10-10: ぼかした画像で "96.5" の 9 と 6 が
+  // つながり、5〔信頼度 0.82〕と読んだ）。
+  const leftover = rawAll.some(
+    (c) =>
+      c.x + c.w <= firstX + 1 &&
+      firstX - (c.x + c.w) <= LEFTOVER_MAX_GAP * gh &&
+      c.h >= 0.6 * gh &&
+      c.h <= 1.8 * gh &&
+      c.w >= 0.3 * gh &&
+      Math.min(c.y + c.h, digitBottom) - Math.max(c.y, digitBottom - gh) >= 0.6 * gh,
+  );
+  if (leftover) minScore = Math.min(minScore, STRUCT_DOUBT_CONF);
   const value = parseAmount(text);
   if (value === null) return { value: NaN, conf: 0 };
   return { value, conf: Math.max(0, Math.min(1, minScore)) };

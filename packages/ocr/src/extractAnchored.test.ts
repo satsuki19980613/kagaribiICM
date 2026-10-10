@@ -6,7 +6,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync, existsSync } from 'node:fs';
 import { templatesFromJson } from './templates.js';
-import { extractAnchored, type AnchorTemplates } from './extractAnchored.js';
+import { betterRead, extractAnchored, type AnchorTemplates } from './extractAnchored.js';
 import { runOcrPipeline } from './pipeline.js';
 import { decodePng } from '../scripts/pngCodec.js';
 import type { Rgba } from './color.js';
@@ -65,4 +65,32 @@ describe('extractAnchored end-to-end (fixture-gated)', () => {
     });
     it.skipIf(present)(`${name}: skipped (no fixture)`, () => {});
   }
+});
+
+describe('betterRead（同じ数値の 2 つの読みから採るほうを決める）', () => {
+  it('桁の数が同じなら、一致の良いほうを採る', () => {
+    // 実測: JPEG の hero 席で、しきい値 120 は 96.9〔0.68〕、185 は 95.9〔0.89〕。
+    expect(betterRead({ value: 96.9, conf: 0.68 }, { value: 95.9, conf: 0.89 })).toEqual({ value: 95.9, conf: 0.89 });
+    expect(betterRead({ value: 95.9, conf: 0.89 }, { value: 96.9, conf: 0.68 })).toEqual({ value: 95.9, conf: 0.89 });
+  });
+
+  it('桁が減った読みには、一致が良くても乗り換えない（暗めの桁が消えただけ）', () => {
+    // 実測: 明るさ 0.7 倍の画像で、120 は 3.1〔0.77〕、168 は 3 が消えて 1〔1.00〕。
+    const r = betterRead({ value: 3.1, conf: 0.77 }, { value: 1, conf: 1 });
+    expect(r.value).toBe(3.1);
+    expect(r.conf).toBeLessThan(0.8); // 桁の数が食い違ったので確認を促す
+  });
+
+  it('桁の多いほうの一致が低ければ、桁の少ない読みに乗り換える（飾り線を 1 桁と数えた読み）', () => {
+    // 実測: 168 は 10.5〔0.50〕、185 は 0.5〔0.85〕。
+    const r = betterRead({ value: 10.5, conf: 0.5 }, { value: 0.5, conf: 0.85 });
+    expect(r.value).toBe(0.5);
+    expect(r.conf).toBeLessThan(0.8);
+  });
+
+  it('桁が増えた読みは、一致が良ければ採る（確認は促す）', () => {
+    const r = betterRead({ value: 5, conf: 0.5 }, { value: 96.5, conf: 0.7 });
+    expect(r.value).toBe(96.5);
+    expect(r.conf).toBeLessThan(0.8);
+  });
 });
