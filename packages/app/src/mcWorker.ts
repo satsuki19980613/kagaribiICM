@@ -19,6 +19,7 @@ import {
   loadWinTie3TableBrowser,
   type ShowdownMcJob,
   type ShowdownNode,
+  type StratSpec,
   type ShowdownMcResult,
   type Exact3DenseChunk,
   type WinTie3Table,
@@ -37,19 +38,43 @@ function getWinTie3(): Promise<WinTie3Table> {
   return winTie3Promise;
 }
 
-/** 席番号として正しい値（0..n-1 の整数）だけを通す。配列の添字に使う前に必ず通す。 */
-function seatIndex(x: unknown, n: number): number {
+/** 0..n-1 の整数だけを通す（席番号・ハンドクラスの番号）。配列の添字に使う前に必ず通す。 */
+function indexBelow(x: unknown, n: number): number {
   for (let i = 0; i < n; i++) if (x === i) return i;
-  throw new Error('invalid seat index in showdown job');
+  throw new Error('invalid index in showdown job');
 }
 
-/** 受け取ったジョブの形を確かめる（席数 2〜6、配列の長さ、参加者の席番号）。おかしければ計算しない。 */
+/** ハンドクラスの数（13×13）。 */
+const N_CLASSES = 169;
+
+/**
+ * 受け取ったジョブの形を確かめ、確かめた値だけで組み直す（席数 2〜6、配列の長さ、参加者の席番号）。
+ * おかしければ計算しない。
+ */
 function checkedNode(node: ShowdownNode): ShowdownNode {
   const n = node.preHandStacks.length;
   if (!(n >= 2 && n <= 6) || node.commits.length !== n || node.payouts.length !== n) {
     throw new Error('invalid showdown job');
   }
-  return { ...node, participants: node.participants.map((p) => seatIndex(p, n)) };
+  const participants: number[] = [];
+  for (const p of node.participants) participants.push(indexBelow(p, n));
+  return { preHandStacks: node.preHandStacks, commits: node.commits, participants, payouts: node.payouts };
+}
+
+/** 層化 MC の指定も同じく組み直す（候補クラスの番号は 0..168 だけ）。 */
+function checkedStrat(strat: StratSpec | undefined): StratSpec | undefined {
+  if (!strat) return undefined;
+  const cand: (Int16Array | undefined)[] = [];
+  for (const c of strat.cand) {
+    if (!c) {
+      cand.push(undefined);
+      continue;
+    }
+    const out = new Int16Array(c.length);
+    for (let q = 0; q < c.length; q++) out[q] = indexBelow(c[q], N_CLASSES);
+    cand.push(out);
+  }
+  return { cand, mOc: strat.mOc, mLow: strat.mLow, sMarg: strat.sMarg };
 }
 
 self.onmessage = async (e: MessageEvent<Req>): Promise<void> => {
@@ -66,7 +91,7 @@ self.onmessage = async (e: MessageEvent<Req>): Promise<void> => {
       const table = await getWinTie3();
       res = computeShowdown3Exact(node, job.ranges, table);
     } else {
-      res = computeShowdownMc(node, job.ranges, job.samples, job.seed, job.strat);
+      res = computeShowdownMc(node, job.ranges, job.samples, job.seed, checkedStrat(job.strat));
     }
     self.postMessage({ ok: true, res });
   } catch (err) {
