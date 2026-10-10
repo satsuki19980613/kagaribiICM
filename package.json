@@ -15,7 +15,8 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit -p packages/app",
     "icons": "node scripts/gen-icons.mjs",
-    "ocr:eval": "vitest run --config scripts/ocr-eval/vitest.config.ts --disable-console-intercept"
+    "ocr:eval": "vitest run --config scripts/ocr-eval/vitest.config.ts --disable-console-intercept",
+    "ocr:augment": "node scripts/ocr-eval/augment.mjs"
   },
   "devDependencies": {
     "@resvg/resvg-js": "^2.6.2",

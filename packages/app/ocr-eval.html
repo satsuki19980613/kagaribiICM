@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OCR 評価（開発用）</title>
+<style>
+  body { margin: 16px; background: #0d0f13; color: #e8e6e3; font: 14px/1.6 ui-monospace, Menlo, Consolas, monospace; }
+  #status { color: #f0b35a; }
+  pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+  a { color: #7fb6ff; margin-right: 16px; }
+</style>
+</head>
+<body>
+<!-- 開発サーバーでだけ開けるページ（ビルドには含まれない）。アプリと同じ経路で ocr-local/ の画像を評価する。 -->
+<div id="status">準備中…</div>
+<div id="links"></div>
+<pre id="out"></pre>
+<script type="module" src="/src/dev/ocrEval.ts"></script>
+</body>
+</html>

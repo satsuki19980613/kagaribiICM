@@ -124,7 +124,10 @@
 - 開発：`npm install && npm run dev` → http://localhost:5180/ （[Node.js](https://nodejs.org/) 20 以上）
 - 手元で使う：`npm start` → http://localhost:4180/ （ビルドして開く）
 - 確認：`npm run typecheck`・`npm test`・`npm run build`。本番のサイトの確認は `node scripts/live-check.mjs`
-- 読み取りの評価（手元専用）：`ocr-local/images/` にスクショ、`ocr-local/truth.json` に目で見て決めた正解を置き、`npm run ocr:eval`。項目・席・テーマごとの正答率と誤りの一覧が `ocr-local/report.md` に出る（形式は [truth.example.json](scripts/ocr-eval/truth.example.json)。`ocr-local/` は Git に入らない。他の人の名前が写ったスクショを公開しないため）
+- 読み取りの評価（手元専用）：`ocr-local/images/` にスクショ、`ocr-local/truth.json` に目で見て決めた正解を置く（形式は [truth.example.json](scripts/ocr-eval/truth.example.json)。`ocr-local/` は Git に入らない。他の人の名前が写ったスクショを公開しないため）
+  - `npm run ocr:eval`：全画像を読み取り、項目・席・テーマごとの正答率と誤りの一覧を `ocr-local/report.md` に出す
+  - `npm run ocr:augment`：正解つきの画像から、縮小・再圧縮・色ずれ・ぼけの複製を作る（頑健さの検査用）
+  - `npm run dev` を動かして http://localhost:5180/ocr-eval.html ：**アプリと同じ経路**（ブラウザでの復号 → 読み取り → 局面の組み立て → 計算用 Worker）で通し、Node の結果との差も出す（開発サーバー専用のページで、ビルドには含まれない）
 - 部品を足す・更新するとき：`npx npm@11 install <部品>`（npm 10 は vitest 4 の依存関係を解決できない不具合がある。ふだんの `npm install` / `npm ci` は npm 10 のままで動く）
 - デプロイとスマホへのインストール（Cloudflare。`main` に push すると自動で配信）：[DEPLOY.md](DEPLOY.md)
 
