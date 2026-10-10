@@ -1,0 +1,31 @@
+{
+  "frames": [
+    {
+      "file": "example-raise.png",
+      "source": "誰の・いつの・どこからの画像か",
+      "tags": { "theme": "明るい街並み", "device": "iPhone", "quality": "原寸" },
+      "gameMode": "legend-avg",
+      "displayMode": "bb",
+      "pot": 5,
+      "heroHand": "QTs",
+      "blindChips": { "sb": 100, "bb": 200, "ante": 50 },
+      "button": "BC",
+      "hero": "BC",
+      "seats": {
+        "TL": { "stack": 98, "bet": 1, "action": "none" },
+        "TC": { "stack": 99, "bet": 0, "action": "fold" },
+        "TR": { "stack": 96.5, "bet": 2, "action": "raise" },
+        "BR": { "stack": 101.3, "bet": 0, "action": "fold" },
+        "BC": { "stack": 95.9, "bet": 0, "action": "none" },
+        "BL": { "stack": 104.4, "bet": 0.5, "action": "none" }
+      },
+      "expect": { "ok": true, "heroPos": "BU", "raiser": "HJ", "raiseTo": 2 },
+      "note": "席は画面上の位置（TL 左上 / TC 上 / TR 右上 / BR 右下 / BC 下＝自分 / BL 左下）。書いていない席は空席。"
+    },
+    {
+      "file": "example-chips.png",
+      "displayMode": "chips",
+      "expect": { "ok": false, "code": "display_mode_chips" }
+    }
+  ]
+}

@@ -8,3 +8,6 @@ coverage/
 .env
 .env.local
 .wrangler/
+
+# OCR の評価用の画像と正解（手元専用。他の人の名前が写ったスクショを公開しない）
+ocr-local/

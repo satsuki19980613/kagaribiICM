@@ -124,6 +124,7 @@
 - 開発：`npm install && npm run dev` → http://localhost:5180/ （[Node.js](https://nodejs.org/) 20 以上）
 - 手元で使う：`npm start` → http://localhost:4180/ （ビルドして開く）
 - 確認：`npm run typecheck`・`npm test`・`npm run build`。本番のサイトの確認は `node scripts/live-check.mjs`
+- 読み取りの評価（手元専用）：`ocr-local/images/` にスクショ、`ocr-local/truth.json` に目で見て決めた正解を置き、`npm run ocr:eval`。項目・席・テーマごとの正答率と誤りの一覧が `ocr-local/report.md` に出る（形式は [truth.example.json](scripts/ocr-eval/truth.example.json)。`ocr-local/` は Git に入らない。他の人の名前が写ったスクショを公開しないため）
 - 部品を足す・更新するとき：`npx npm@11 install <部品>`（npm 10 は vitest 4 の依存関係を解決できない不具合がある。ふだんの `npm install` / `npm ci` は npm 10 のままで動く）
 - デプロイとスマホへのインストール（Cloudflare。`main` に push すると自動で配信）：[DEPLOY.md](DEPLOY.md)
 

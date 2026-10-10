@@ -14,7 +14,8 @@
     "preview": "npm run preview -w @kagaribi/app",
     "test": "vitest run",
     "typecheck": "tsc --noEmit -p packages/app",
-    "icons": "node scripts/gen-icons.mjs"
+    "icons": "node scripts/gen-icons.mjs",
+    "ocr:eval": "vitest run --config scripts/ocr-eval/vitest.config.ts --disable-console-intercept"
   },
   "devDependencies": {
     "@resvg/resvg-js": "^2.6.2",
