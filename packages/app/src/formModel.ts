@@ -78,7 +78,10 @@ export function reconcilePositions(form: BoardForm): BoardForm {
   const stacks: Partial<Record<Position, string>> = {};
   for (const p of positions) stacks[p] = form.stacks[p] ?? '15';
   const heroPos = positions.includes(form.heroPos) ? form.heroPos : positions[0]!;
-  return { ...form, stacks, heroPos };
+  // 人数が変わると席の並びが変わるので、スクショから読んだアクションは捨てる。レイズした人は、
+  // 新しい並びでも hero より前にいるときだけ残す。
+  const raiser = form.raiser && positions.indexOf(form.raiser) >= 0 && positions.indexOf(form.raiser) < positions.indexOf(heroPos) ? form.raiser : '';
+  return { ...form, stacks, heroPos, line: undefined, raiser };
 }
 
 function num(s: string): number {
@@ -155,6 +158,15 @@ export function buildBoardState(form: BoardForm): BuildResult {
       issues.push(`${raiser} のスタックではレイズ ${raiseTo}bb がオールインになります（オールインとして扱ってください）`);
     }
     raiseFields = { raiseTo, line };
+  }
+
+  // レイズの無い局面でも、スクショから読んだ「前の人のオールイン」は残す（結果画面の見出しに使う）。
+  // hero より前の席の F / P / C だけを通す（hero や人数を変えたら InputForm が line を捨てる）。
+  if (!raiser && form.line) {
+    const hi = positions.indexOf(form.heroPos);
+    const before = positions.slice(0, hi);
+    const ok = Object.entries(form.line).every(([p, a]) => before.includes(p as Position) && (a === 'F' || a === 'P' || a === 'C'));
+    if (ok && Object.values(form.line).some((a) => a === 'P')) raiseFields = { line: form.line };
   }
 
   const parsed = parseBoardState({ ...candidate, ...raiseFields });

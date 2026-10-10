@@ -146,6 +146,11 @@ export function InputForm(props: {
           />
         </div>
       </div>
+      {!form.raiser && form.line && lineText(positions, form.line) !== 'なし' && (
+        <p className="hint">
+          スクショのアクション: {lineText(positions, form.line)}。結果はこのアクションに対する判断として表示します（HERO や人数を変えると消えます）。
+        </p>
+      )}
       {form.raiser && (
         <p className="hint">
           {form.line

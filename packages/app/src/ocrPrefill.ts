@@ -42,6 +42,8 @@ export function boardStateToForm(state: BoardState): BoardForm {
           raiseTo: fmt(state.raiseTo),
           line: state.line,
         }
-      : {}),
+      : state.line
+        ? { line: state.line }
+        : {}),
   };
 }

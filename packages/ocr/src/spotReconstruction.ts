@@ -57,6 +57,25 @@ export function raiseLine(
   return { raiseTo: Math.round(r.screenBet * 20) / 20, line };
 }
 
+/**
+ * レイズの無い（AOF の）画面で、hero より前の席のアクション（オールイン＝'P'、それへのコール＝'C'、
+ * それ以外＝'F'）。誰も参加していなければ null（hero の未開ノードがそのまま見出しになる）。
+ * 結果画面が「前の人のオールインに対する判断」を最初から表示するために使う。
+ */
+export function allinLine(facts: readonly SeatFacts[], heroPos: Position): Partial<Record<Position, ActionChar>> | null {
+  const heroAt = orderIdx(heroPos);
+  const line: Partial<Record<Position, ActionChar>> = {};
+  let sawAllin = false;
+  for (const f of inActionOrder(facts)) {
+    if (orderIdx(f.pos) >= heroAt) break;
+    if (f.action === 'allin' || f.action === 'call') {
+      line[f.pos] = sawAllin ? 'C' : 'P';
+      sawAllin = true;
+    } else line[f.pos] = 'F';
+  }
+  return sawAllin ? line : null;
+}
+
 import { POSITIONS, type ActionChar, type BoardState, type Position, type Seat } from '@kagaribi/core';
 import type { RawReads, RawSeatRead, SeatAction } from './types.js';
 import { derivePositions } from './positionDerivation.js';
@@ -290,7 +309,12 @@ export function reconstructSpot(
   };
 
   const raised = raiseLine(facts, derived.heroPos);
-  const solveState: BoardState = raised ? { ...state, raiseTo: raised.raiseTo, line: raised.line } : state;
+  const pushed = raised ? null : allinLine(facts, derived.heroPos);
+  const solveState: BoardState = raised
+    ? { ...state, raiseTo: raised.raiseTo, line: raised.line }
+    : pushed
+      ? { ...state, line: pushed }
+      : state;
 
   const factsMap = new Map<Position, SeatFacts>(facts.map((f) => [f.pos, f]));
   return { ok: true, issues: [], state: solveState, facts: factsMap };

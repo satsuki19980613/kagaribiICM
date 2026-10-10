@@ -3,7 +3,7 @@ import { solveMultiway } from '@kagaribi/solver';
 import type { BoardState } from '@kagaribi/core';
 import { buildBoardState, defaultForm } from '../formModel';
 import type { SolveNodeDto, SolveResultDto } from '../solverProtocol';
-import { headlineNode } from '../records/model';
+import { headlineNode, heroNodeKey } from '../records/model';
 import {
   activeNode,
   aggressiveFor,
@@ -159,4 +159,54 @@ describe('ミニレイズ・ゲームのツリー', () => {
     const st2 = applyChoice(st, 1, 'F');
     expect(treeRows(r, st2).some((x) => x.second)).toBe(false);
   });
+});
+
+describe('AOF で前の人がオールインしている場面', () => {
+  const node = (key: string, actor: string, actionType: string, heroFreq: number): SolveNodeDto => ({
+    key, actor, actionType, pct: 20, range: 'AA', hands: ['AA'], heroFreq, heroEv: 0.1,
+  });
+  const result: SolveResultDto = {
+    playersLeft: 3, heroPos: 'SB', heroHand: 'AA', iterations: 1, exploitabilityPt: 0, converged: true, equity: {},
+    heroKey: 'BU:P,SB:-,BB:-',
+    nodes: [
+      node('BU:-,SB:-,BB:-', 'BU', 'PU', 0),
+      node('BU:F,SB:-,BB:-', 'SB', 'PU', 0),
+      node('BU:P,SB:-,BB:-', 'SB', 'CA', 1),
+      node('BU:P,SB:C,BB:-', 'BB', 'OC', 0),
+    ],
+  };
+
+  it('見出しは「自分が最初に動く場合」ではなく、オールインに対するコールのノード', () => {
+    const head = headlineNode(result)!;
+    expect(head.key).toBe('BU:P,SB:-,BB:-');
+    expect(head.actionType).toBe('CA');
+  });
+
+  it('ツリーは BU のオールインを選んだ状態で、hero の行から始まる', () => {
+    const st = defaultState(result);
+    expect(st.actions).toEqual(['P', 'C', 'F']);
+    expect(st.active).toBe(1);
+    expect(activeNode(result, st)!.key).toBe('BU:P,SB:-,BB:-');
+    expect(treeRows(result, st).some((r) => r.second)).toBe(false);
+  });
+});
+
+describe('実ソルバーの出力で、前の人のオールインに対するノードが見出しになる', () => {
+  it('4 人・BU が CO のオールインを受けた場面（worker と同じ手順で heroKey を付ける）', async () => {
+    const { state, dto } = await solveDto(4, 'BU');
+    const spot: BoardState = { ...state, line: { CO: 'P' } };
+    const key = heroNodeKey(spot)!;
+    expect(key).toBe('CO:P,BU:-,SB:-,BB:-');
+    // worker は、キーに当たるノードが hero のものなら heroKey を付ける。
+    expect(dto.nodes.some((n) => n.key === key && n.actor === spot.heroPos)).toBe(true);
+    const withKey: SolveResultDto = { ...dto, heroKey: key };
+    const head = headlineNode(withKey)!;
+    expect(head.actionType).toBe('CA');
+    expect(head.key).toBe(key);
+    // heroKey が無い従来の結果は、これまでどおり未開のノード。
+    expect(headlineNode(dto)!.actionType).toBe('PU');
+    const st = defaultState(withKey);
+    expect(st.actions[0]).toBe('P');
+    expect(st.active).toBe(1);
+  }, 120_000);
 });

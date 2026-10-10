@@ -31,4 +31,15 @@ describe('手入力のミニレイズ', () => {
     expect(back.line).toEqual(st.line);
     expect(lineText(['CO', 'BU', 'SB', 'BB'], st.line!)).toBe('CO RAISE → SB ALL IN');
   });
+
+  it('レイズの無い局面でも、スクショの「前の人のオールイン」は残る（hero より後ろの席が混じっていたら捨てる）', () => {
+    const f = { ...defaultForm(4), heroPos: 'SB' as const, line: { CO: 'F', BU: 'P' } as const };
+    const st = buildBoardState(f).state!;
+    expect(st.raiseTo).toBeUndefined();
+    expect(st.line).toEqual({ CO: 'F', BU: 'P' });
+    expect(boardStateToForm(st).line).toEqual({ CO: 'F', BU: 'P' });
+    const bad = buildBoardState({ ...defaultForm(4), heroPos: 'BU' as const, line: { CO: 'F', BU: 'P' } as const });
+    expect(bad.ok).toBe(true);
+    expect(bad.state!.line).toBeUndefined();
+  });
 });

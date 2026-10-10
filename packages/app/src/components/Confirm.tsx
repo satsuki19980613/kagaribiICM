@@ -45,6 +45,8 @@ export function Confirm(props: {
   const pot = potRowView(state, props.readout);
   const stacksLow = state.seats.some((s) => low.has(`${s.pos}.stack`));
   const fromPhoto = !!props.imageUrl;
+  // hero の判断までのアクション（前の人のオールイン・レイズ）。フォールドだけなら 'なし'。
+  const actionText = state.line ? lineText(positionsForPlayersLeft(state.playersLeft), state.line) : 'なし';
   const Chk = (): JSX.Element => <span className="chk">CHECK</span>;
 
   return (
@@ -120,10 +122,10 @@ export function Confirm(props: {
           <dt>POT</dt>
           <dd className={pot.ok ? '' : 'warn'}>{pot.text}</dd>
           <dd className="tag" />
-          {state.raiseTo !== undefined && state.line && (
+          {state.line && actionText !== 'なし' && (
             <>
               <dt>ACTION</dt>
-              <dd>{lineText(positionsForPlayersLeft(state.playersLeft), state.line).replace('RAISE', `RAISE ${formatBbDisplay(state.raiseTo)}bb`)}</dd>
+              <dd>{actionText.replace('RAISE', `RAISE ${formatBbDisplay(state.raiseTo ?? 2)}bb`)}</dd>
               <dd className="tag" />
             </>
           )}

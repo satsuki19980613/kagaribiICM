@@ -317,6 +317,11 @@ self.onmessage = async (e: MessageEvent<SolveRequest | McResultMsg>): Promise<vo
       });
       dto = toDto(r as unknown as CommonResult, state.playersLeft, state.heroPos, state.heroHand, state.gameMode);
     }
+    // 前の人のオールインなど、局面のアクションが分かっていれば、その決定ノードを見出しにする。
+    if (!dto.heroKey) {
+      const key = heroNodeKey(state);
+      if (key && dto.nodes.some((n) => n.key === key && n.actor === state.heroPos)) dto.heroKey = key;
+    }
     const res: SolveResponse = { id, ok: true, result: dto, ms: performance.now() - t0 };
     self.postMessage(res);
   } catch (err) {

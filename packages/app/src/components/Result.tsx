@@ -28,7 +28,13 @@ function raiseLineText(state: BoardState): string {
   const parts = order
     .filter((p) => line[p] && line[p] !== 'F')
     .map((p) => (line[p] === 'R' ? `${p} の ${formatBbDisplay(state.raiseTo ?? 2)}bb レイズ` : `${p} ${line[p] === 'P' ? 'ALL IN' : 'CALL'}`));
-  return `${parts.join(' → ')}に対する判断`;
+  const text = parts.join(' → ');
+  return `${text}${/[A-Za-z]$/.test(text) ? ' ' : ''}に対する判断`;
+}
+
+/** hero の判断までに、フォールド以外のアクション（前の人のオールインなど）があるか。 */
+function hasAction(state: BoardState): boolean {
+  return Object.values(state.line ?? {}).some((a) => a !== 'F');
 }
 
 /** 計算結果。自分の選択（ALL IN / FOLD / 未選択）は押した時点で記録に保存する。 */
@@ -87,10 +93,12 @@ export function Result(props: {
               {ACTION_EN[headline.actionType] ?? headline.actionType} {headline.pct.toFixed(1)}%
             </span>
           </div>
-          {result.raiseTo !== undefined && (
+          {result.raiseTo !== undefined ? (
             <p className="hint">
               {raiseLineText(state)}。レイズの後はオールインかフォールドだけのモデルで、レイズする人のレンジもソルバーが決めています。
             </p>
+          ) : (
+            result.heroKey && hasAction(state) && <p className="hint">{raiseLineText(state)}。</p>
           )}
           <div className="hs-grid two">
             <div className="hs-stat">

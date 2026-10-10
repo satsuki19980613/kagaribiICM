@@ -183,6 +183,42 @@ describe('pipeline — 対象外検出（§6.5）', () => {
     expect(r.issues.join()).toMatch(/レイズ|3bet|リンプ/);
   });
 
+  it('前の人がオールインしている AOF の場面は、hero までのアクションを line に載せる', () => {
+    // clockwiseFromButton(5) = [BU, SB, BB, UTG, CO]。UTG フォールド、CO オールイン、hero BU。
+    const r = runOcrPipeline(
+      mkReads({
+        pot: 16.5,
+        seats: [
+          { id: 'BU', button: true, hero: true, stack: 15, bet: 0 },
+          { id: 'SB', stack: 14.5, bet: 0.5 },
+          { id: 'BB', stack: 14, bet: 1 },
+          { id: 'UTG', action: 'fold', stack: 15, bet: 0 },
+          { id: 'CO', action: 'allin', stack: 0, bet: 15 },
+        ],
+      }),
+    );
+    expect(r.ok).toBe(true);
+    expect(r.state!.raiseTo).toBeUndefined();
+    expect(r.state!.line).toEqual({ UTG: 'F', CO: 'P' });
+  });
+
+  it('誰も参加していない場面には line を付けない（従来どおり）', () => {
+    const r = runOcrPipeline(
+      mkReads({
+        pot: 1.5,
+        seats: [
+          { id: 'BU', button: true, hero: true, stack: 15, bet: 0 },
+          { id: 'SB', stack: 14.5, bet: 0.5 },
+          { id: 'BB', stack: 14, bet: 1 },
+          { id: 'UTG', action: 'fold', stack: 15, bet: 0 },
+          { id: 'CO', action: 'fold', stack: 15, bet: 0 },
+        ],
+      }),
+    );
+    expect(r.ok).toBe(true);
+    expect(r.state!.line).toBeUndefined();
+  });
+
   it('最初の人のミニレイズはミニレイズ・ゲームとして通す（line・raiseTo を載せる）', () => {
     // clockwiseFromButton(5) = [BU, SB, BB, UTG, CO]。UTG が 2bb にレイズ、hero CO。
     const r = runOcrPipeline(
