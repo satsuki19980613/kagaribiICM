@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { ExtractTemplates, Rgba } from '@kagaribi/ocr';
-import { ocrPrefillFromRgba, CHIPS_MODE_ISSUE } from './prefill';
+import { ocrPrefillFromRgba, NOT_TABLE_ISSUE } from './prefill';
 
 /** bestMatch は空テンプレで throw するので、各種 1 グリフだけ与える。 */
 const glyph = (label: string) => ({ label, img: { w: 1, h: 1, data: Uint8Array.from([255]) } });
@@ -33,20 +33,21 @@ describe('ocrPrefillFromRgba', () => {
     expect(res.lowConfidenceFields).toBeInstanceOf(Array);
   });
 
-  it('BB 表示でない（chips 判定）フレームは取り込み拒否＝ok=false・チップ表示 issue（SPEC §5.2）', () => {
-    // 黒一色は数字が読めず detectDisplayMode が chips 既定にフォールバックする＝chips 扱い。
+  it('何も読めないフレームは取り込み拒否＝ok=false・「卓の画面として読み取れません」（チップ表示とは区別する）', () => {
+    // 黒一色はスタックもポットもハンドも読めない。BB 表示と判定できないので取り込まないが、
+    // チップ表示の卓ではないので、チップ表示のメッセージは出さない。
     const res = ocrPrefillFromRgba(blackRgba(800, 370), templates);
     expect(res.ok).toBe(false);
-    expect(res.issues).toContain(CHIPS_MODE_ISSUE);
+    expect(res.issues).toContain(NOT_TABLE_ISSUE);
     expect(res.form).toBeUndefined();
   });
 
-  it('chips 棄却でも readout / issueCodes / imageSize を返す（照合ビューは失敗画像でも見せる・SPEC §5.2.3）', () => {
+  it('棄却でも readout / issueCodes / imageSize を返す（照合ビューは失敗画像でも見せる・SPEC §5.2.3）', () => {
     const res = ocrPrefillFromRgba(blackRgba(800, 370), templates);
     expect(res.ok).toBe(false);
     expect(res.readout).toBeDefined();
-    expect(res.readout!.issues).toContain(CHIPS_MODE_ISSUE);
-    expect(res.readout!.issueCodes).toContain('display_mode_chips');
+    expect(res.readout!.issues).toContain(NOT_TABLE_ISSUE);
+    expect(res.readout!.issueCodes).toContain('not_table_screen');
     expect(Array.isArray(res.readout!.seats)).toBe(true);
     expect(res.issueCodes).toEqual(res.readout!.issueCodes);
     expect(res.imageSize).toEqual({ w: 800, h: 370 });

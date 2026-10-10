@@ -22,6 +22,12 @@ describe('classifyIssueCode — 既存の実メッセージ文字列を期待コ
     ).toBe('display_mode_chips');
   });
 
+  it('prefill.ts: 卓の画面として読み取れない（チップ表示とは別のコード）', () => {
+    expect(
+      classifyIssueCode('ポーカーチェイスの卓の画面として読み取れませんでした。プリフロップの卓の全体が写った、切り抜いていないスクショを選んでください。'),
+    ).toBe('not_table_screen');
+  });
+
   it('spotReconstruction.ts: レイズ（非オールイン）', () => {
     expect(
       classifyIssueCode('SB がレイズ（非オールイン）しています（ミニレイズ/オープン/3bet は push/fold では扱えません）'),

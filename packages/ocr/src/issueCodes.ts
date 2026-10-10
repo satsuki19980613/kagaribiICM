@@ -8,7 +8,7 @@
  * 固定しない＝表記ゆれがあっても分類側だけ直せばよい）。
  *
  * 対応コード一覧（SPEC §12.2）:
- *   street_not_preflop / street_unknown / display_mode_chips / out_of_scope_raise /
+ *   street_not_preflop / street_unknown / display_mode_chips / not_table_screen / out_of_scope_raise /
  *   out_of_scope_limp / out_of_scope_unclassified_bet / walk / seat_read_failed /
  *   checksum_mismatch / too_many_players / not_club_match /
  *   hero_hand_unreadable / pot_unreadable / unknown
@@ -18,6 +18,7 @@ export type IssueCode =
   | 'street_not_preflop'
   | 'street_unknown'
   | 'display_mode_chips'
+  | 'not_table_screen'
   | 'out_of_scope_raise'
   | 'out_of_scope_limp'
   | 'out_of_scope_unclassified_bet'
@@ -49,6 +50,8 @@ const RULES: readonly Rule[] = [
   { code: 'street_not_preflop', test: (m) => /プリフロップの画面ではありません/.test(m) },
   // prefill.ts CHIPS_MODE_ISSUE: 'このスクショはチップ表示です。...'
   { code: 'display_mode_chips', test: (m) => /チップ表示です/.test(m) },
+  // prefill.ts NOT_TABLE_ISSUE: 'ポーカーチェイスの卓の画面として読み取れませんでした。...'
+  { code: 'not_table_screen', test: (m) => /卓の画面として読み取れませんでした/.test(m) },
   // spotReconstruction.ts detectOutOfScope: '${pos} がレイズ（非オールイン）しています...'
   { code: 'out_of_scope_raise', test: (m) => /がレイズ（非オールイン）/.test(m) },
   // 同: '${pos} のレイズより前の席（自分）の判断は扱えません…' / '自分のレイズの後にオールインが入っていません…'

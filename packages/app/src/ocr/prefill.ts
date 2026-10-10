@@ -15,7 +15,7 @@
  * 早期棄却したときも含め、**全経路で返す**（既存4フィールドの意味・型は不変）。
  */
 
-import type { GameMode } from '@kagaribi/core';
+import { isHandClass, type GameMode } from '@kagaribi/core';
 import {
   extractAnchored,
   extractRawReadsAuto,
@@ -88,6 +88,22 @@ const DEFAULT_OPTS: ExtractOptions = { betMinCh: 125 };
 export const CHIPS_MODE_ISSUE =
   'このスクショはチップ表示です。スタックが BB 表示（例: 20.2 BB）の画面を取り込んでください（チップ表示は手入力をご利用ください）。';
 
+/**
+ * 卓の画面として何も読めなかったときのメッセージ。チップ表示の卓と区別する（評価 2026-10-10:
+ * ロビー・図表・切り抜いた画像など 236 枚がすべて「チップ表示です」で弾かれ、理由が伝わらなかった）。
+ */
+export const NOT_TABLE_ISSUE =
+  'ポーカーチェイスの卓の画面として読み取れませんでした。プリフロップの卓の全体が写った、切り抜いていないスクショを選んでください。';
+
+/** スタック・ポット・自分のハンドのどれも読めていない（＝卓の画面ですらない可能性が高い）。 */
+function nothingReadable(reads: RawReads): boolean {
+  return (
+    reads.seats.every((s) => !Number.isFinite(s.stack.value)) &&
+    !Number.isFinite(reads.pot.value) &&
+    !isHandClass(reads.heroHand.value)
+  );
+}
+
 /** Rgba → OCR プリフィル結果（6-max BB 表示プロファイル）。 */
 export function ocrPrefillFromRgba(
   img: Rgba,
@@ -116,10 +132,11 @@ export function ocrPrefillFromRgba(
   // 取り込み条件＝BB 表示のみ（SPEC §5.2）。チップ総額表示は早期に棄却して手入力へ誘導する。
   // pipeline を通していないので posById 等は無いが、読めた分（席の生読み取り）は照合ビューに出す。
   if (reads.displayMode !== 'bb') {
-    const readout = buildReadout(reads, { issues: [CHIPS_MODE_ISSUE] });
+    const issue = nothingReadable(reads) ? NOT_TABLE_ISSUE : CHIPS_MODE_ISSUE;
+    const readout = buildReadout(reads, { issues: [issue] });
     return {
       ok: false,
-      issues: [CHIPS_MODE_ISSUE],
+      issues: [issue],
       lowConfidenceFields: [],
       readout,
       issueCodes: readout.issueCodes,

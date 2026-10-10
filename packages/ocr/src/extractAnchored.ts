@@ -108,6 +108,9 @@ const HEADER_ANTE: Rect = { x: 0.18, y: 0.058, w: 0.06, h: 0.04 };
 /** hero カード帯（フラクショナル）。2 枚の表向きカードを内包する高さを確保（_dbg2 で全機種一致）。 */
 const HERO_CARD_BAND = { x: 0.40, y: 0.62, w: 0.22, h: 0.20 };
 
+/** ヘッダの白文字のしきい値。既定（undefined）で読めなければ順に上げる。 */
+const HEADER_MINCH: readonly (number | undefined)[] = [undefined, 190, 215, 235];
+
 /**
  * ヘッダ読みの横位置の探索量（画像幅比）。近い順に +0.002, −0.002, +0.004, … と試す。
  * 右へ最大 0.08・左へ最大 0.02（実測: Pixel 2424×1080 は数値部が +0.030〜+0.036 にずれていた）。
@@ -136,18 +139,30 @@ const HEADER_SCAN_DX: readonly number[] = (() => {
  *     切れた数字や「BB」の文字を巻き込んだ読みは自然に落ちる。
  *  3. どこでも照合できなければ従来の読みのまま（resolveBlindChips が誤読として扱う）。
  * ずらした量（dx）はアンティの読み位置にも使う（アンティの枠はブラインドの枠の真下で左端が揃う）。
+ *
+ * 白文字のしきい値も同じ考え方で段階的に上げる（HEADER_MINCH）。ヘッダの帯は半透明で、背景が
+ * 明るい卓のテーマ（ピンクの実験室など）では帯の地が既定のしきい値を超え、文字と地がつながって
+ * 読めない（さつきの実機スクショ 2026-10-09 で 820/1640 が未読 → 総チップの照合が止まっていた）。
+ * 既定で照合できた読みはそのまま使い、できなかったときだけ上げる。採ったしきい値はアンティにも使う。
  */
-function readHeaderBlinds(img: Rgba, digits: readonly Template[]): { blinds: Blinds; dx: number } {
-  const at = (dx: number): Blinds =>
-    readBlinds(img, fracRect(img, { ...HEADER_BLINDS, x: HEADER_BLINDS.x + dx }), digits);
+function readHeaderBlinds(
+  img: Rgba,
+  digits: readonly Template[],
+): { blinds: Blinds; dx: number; minCh: number | undefined } {
   const consistent = (b: Blinds): boolean => isTableConsistentBlinds(b.sb.value, b.bb.value);
-  const base = at(0);
-  if (consistent(base)) return { blinds: base, dx: 0 };
-  for (const dx of HEADER_SCAN_DX) {
-    const b = at(dx);
-    if (consistent(b)) return { blinds: b, dx };
+  let fallback: Blinds | null = null;
+  for (const minCh of HEADER_MINCH) {
+    const at = (dx: number): Blinds =>
+      readBlinds(img, fracRect(img, { ...HEADER_BLINDS, x: HEADER_BLINDS.x + dx }), digits, minCh === undefined ? {} : { minCh });
+    const base = at(0);
+    fallback ??= base;
+    if (consistent(base)) return { blinds: base, dx: 0, minCh };
+    for (const dx of HEADER_SCAN_DX) {
+      const b = at(dx);
+      if (consistent(b)) return { blinds: b, dx, minCh };
+    }
   }
-  return { blinds: base, dx: 0 };
+  return { blinds: fallback!, dx: 0, minCh: undefined };
 }
 
 /**
@@ -178,6 +193,10 @@ const BB_SCORE_FLOOR = 0.45;
  * 白を拾いやすいが scoreFloor＋BB アンカー（直左数字を持つ BB のみ）が偽桁を除外する。
  */
 const MINCH_SEQ = [120, 168, 185, 150, 96, 80] as const;
+/** しきい値のうち、読みを比べてよい主の 3 つ。 */
+const MAIN_MINCH: ReadonlySet<number> = new Set([120, 168, 185]);
+/** 最初の読みの信頼度がこれ未満なら、ほかの主のしきい値も試す（確認画面の強調のしきい値と同じ）。 */
+const RETRY_BELOW_CONF = 0.8;
 function readStackAnchored(
   img: Rgba,
   sr: Rect,
@@ -186,11 +205,19 @@ function readStackAnchored(
   letters: readonly Template[] | undefined,
   scoreFloor: number,
 ): Read<number> {
+  let best: Read<number> | null = null;
   for (const minCh of MINCH_SEQ) {
     const r = readAmountBbAnchored(img, sr, digits, { scoreFloor, minCh }, letters, cx);
-    if (Number.isFinite(r.value)) return r;
+    if (!Number.isFinite(r.value)) continue;
+    // 自信のある読みは、従来どおり最初に読めたものをそのまま採る。
+    if (!best && r.conf >= RETRY_BELOW_CONF) return r;
+    // 自信の無い読み（再圧縮された画像で、札の地の模様が数字に混ざる等）は、主のしきい値
+    // （120・168・185）の残りも試して、いちばん一致の良いものを採る（実測: JPEG の hero 席で
+    // 120 は 96.9〔0.68〕、185 は 95.9〔0.89〕）。150 以下は誤読の罠があるので、ここでは比べない。
+    if (!best || r.conf > best.conf) best = r;
+    if (!MAIN_MINCH.has(minCh)) break;
   }
-  return { value: NaN, conf: 0 };
+  return best ?? { value: NaN, conf: 0 };
 }
 
 /**
@@ -437,10 +464,15 @@ export function extractAnchored(img: Rgba, templates: AnchorTemplates, opts: Anc
 
   // ヘッダ SB/BB・アンティ（常に chips 表記）→ bb で BB 正規化。
   // 表と照合できる位置で読む（readHeaderBlinds）。アンティも同じだけずらした位置で読む。
-  const { blinds: blindsRaw, dx: headerDx } = readHeaderBlinds(nimg, digits);
+  const { blinds: blindsRaw, dx: headerDx, minCh: headerMinCh } = readHeaderBlinds(nimg, digits);
   const bbChips = Number.isFinite(blindsRaw.bb.value) && blindsRaw.bb.value > 0 ? blindsRaw.bb.value : 1;
   const bbNorm = norm(blindsRaw.bb, bbChips).value; // BB 換算での BB（=1, allin bet の下駄に使う）。
-  const anteChips = recognizeAmount(nimg, fracRect(nimg, { ...HEADER_ANTE, x: HEADER_ANTE.x + headerDx }), digits);
+  const anteChips = recognizeAmount(
+    nimg,
+    fracRect(nimg, { ...HEADER_ANTE, x: HEADER_ANTE.x + headerDx }),
+    digits,
+    headerMinCh === undefined ? {} : { minCh: headerMinCh },
+  );
   // ブラインド解決（クラブマッチ・保存則ベース）。読んだ BB を基準に blindChips を露出し、下流の総チップ
   // 保存チェック（chipConsistency）の基準にする。公式「通常」表にタイト一致すれば厳密値で小誤読を補正、
   // 一致しない別スピード（例 480/960/240）は読み値をそのまま採用（960 を 1100 へ誤スナップしない）。

@@ -62,6 +62,9 @@ export interface OcrValidation {
 export const HERO_HAND_UNREAD_ISSUE =
   '自分のハンドを読み取れませんでした。「読めた分を手で埋める」から、ハンドだけ選んでください（ほかの項目は読み取れています）。';
 
+/** 自分のハンドの読みを採用する信頼度の下限。これ未満は「読めなかった」として手で選んでもらう。 */
+export const HERO_HAND_MIN_CONF = 0.4;
+
 /** SeatFacts のマップ（Position keyed）→ 物理席 id → Position の対応表。readout の pos 反映用。 */
 function posByIdFromFacts(facts: ReadonlyMap<Position, SeatFacts>): Map<string, string> {
   const byId = new Map<string, string>();
@@ -179,7 +182,9 @@ export function runOcrPipeline(reads: RawReads, opts: OcrPipelineOptions = {}): 
   // core の構造・意味論検証（保険）。選んだモードは復元した盤面に載せる（以降 Worker・記録へ流れる）。
   const withMode = opts.gameMode ? { ...recon.state, gameMode: opts.gameMode } : recon.state;
   // ハンドだけ読めなかった: ほかは揃っているので、読めた分を返して手入力に回す。
-  if (!isHandClass(withMode.heroHand)) {
+  // 読めたように見えても一致がごく低いハンドは、読めなかった扱いにする（評価 2026-10-10: 再圧縮した
+  // 画像で 66 を 86s〔信頼度 0.06〕と読み、そのまま計算して答えが変わった。正しい読みは 0.74 以上）。
+  if (!isHandClass(withMode.heroHand) || reads.heroHand.conf < HERO_HAND_MIN_CONF) {
     const issues = [HERO_HAND_UNREAD_ISSUE];
     return {
       ok: false,

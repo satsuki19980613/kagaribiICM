@@ -511,4 +511,23 @@ describe('pipeline — 自分のハンドだけ読めなかった（さつき報
     expect(r.partialState?.heroPos).toBe('UTG');
     expect(r.partialState?.playersLeft).toBe(5);
   });
+  it('読めたように見えても信頼度がごく低いハンドは、読めなかった扱いにする（誤ったハンドで計算しない）', () => {
+    const base = mkReads({
+      pot: 1.5,
+      hand: '86s',
+      seats: [
+        { id: 'BU', button: true, stack: 15, bet: 0 },
+        { id: 'SB', stack: 14.5, bet: 0.5 },
+        { id: 'BB', stack: 14, bet: 1 },
+        { id: 'UTG', hero: true, stack: 15, bet: 0 },
+        { id: 'CO', stack: 15, bet: 0 },
+      ],
+    });
+    const r = runOcrPipeline({ ...base, heroHand: { value: '86s', conf: 0.06 } });
+    expect(r.ok).toBe(false);
+    expect(r.readout.issueCodes).toContain('hero_hand_unreadable');
+    expect(r.partialState?.heroPos).toBe('UTG');
+    // 信頼度が普通なら、同じ読みはそのまま通る。
+    expect(runOcrPipeline({ ...base, heroHand: { value: '86s', conf: 0.8 } }).ok).toBe(true);
+  });
 });

@@ -147,6 +147,58 @@ describe('readAmountBbAnchored (two-anchor 名前アンカー)', () => {
     const r = readAmountBbAnchored(img, full(img), digits, { minCh: 100 }, letters);
     expect(Number.isNaN(r.value)).toBe(true);
   });
+  // --- 評価（2026-10-10）で見つかった「信頼度が高いままの誤読」の回帰防止 ---
+  // 8 は B とよく似ている（1 行違い）。数字テンプレに 8 を足して、取り違えを再現する。
+  const EIGHT = glyph(['#####', '#...#', '#...#', '#####', '#...#', '#...#', '#...#', '#####']);
+  const digits8: Template[] = [...digits, { label: '8', img: EIGHT }];
+
+  it('B と読める成分が 3 つ並んだら右の 2 つが BB（"28 BB" を 2 と読まない）', () => {
+    // 2 文字目の「8」が B の形に写った場合（縮小した画像で実測: 98→9、2.8→2）。
+    const img = render([TWO, BEE, BEE, BEE]);
+    const r = readAmountBbAnchored(img, full(img), digits8, { minCh: 100 }, letters);
+    expect(r.value).toBe(28);
+  });
+
+  it('BB の 2 文字目だけ 8 と読めても BB として扱う（"20 B8" → 20）', () => {
+    const img = render([TWO, ZERO, BEE, EIGHT]);
+    const r = readAmountBbAnchored(img, full(img), digits8, { minCh: 100 }, letters);
+    expect(r.value).toBe(20);
+  });
+
+  it('B の左の 8 は数字かもしれないので、B が 1 つしか無ければ読まない（"28 B" → NaN）', () => {
+    const img = render([TWO, EIGHT, BEE]);
+    const r = readAmountBbAnchored(img, full(img), digits8, { minCh: 100 }, letters);
+    expect(Number.isNaN(r.value)).toBe(true);
+  });
+
+  it('0 で始まる 2 桁は存在しないので小数点を補い、信頼度を下げる（"02 BB" → 0.2）', () => {
+    const img = render([ZERO, TWO, BEE, BEE]);
+    const r = readAmountBbAnchored(img, full(img), digits, { minCh: 100 }, letters);
+    expect(r.value).toBeCloseTo(0.2, 5);
+    expect(r.conf).toBeLessThan(0.8);
+  });
+
+  it('先頭の数字が飾り線とつながって成分として拾えなくても、窓の照合で拾い直す（"0.2 BB"）', () => {
+    // 0 の左上に、札の飾りに見立てた横線と縦線をつなぐ（実測: 楕円の飾り枠が "0.5" の 0 に接していた）。
+    const text = render([ZERO, DOT, TWO, BEE, BEE]);
+    const padL = 60, padT = 30, padB = 30;
+    const w = text.w + padL, h = text.h + padT + padB;
+    const data = new Uint8Array(w * h * 4);
+    for (let i = 0; i < w * h; i++) { data[i * 4] = 20; data[i * 4 + 1] = 20; data[i * 4 + 2] = 20; data[i * 4 + 3] = 255; }
+    for (let y = 0; y < text.h; y++) for (let x = 0; x < text.w; x++) {
+      const src = (y * text.w + x) * 4, dst = ((y + padT) * w + (x + padL)) * 4;
+      data[dst] = text.data[src]!; data[dst + 1] = text.data[src + 1]!; data[dst + 2] = text.data[src + 2]!;
+    }
+    const white = (x: number, y: number): void => { const d = (y * w + x) * 4; data[d] = 255; data[d + 1] = 255; data[d + 2] = 255; };
+    // 0 の左上の角（render の余白 3px）へ横線、その左端から上下に長い縦線。
+    for (let x = 4; x < padL + 3; x++) for (let y = padT + 3; y < padT + 6; y++) white(x, y);
+    for (let y = 2; y < h - 2; y++) for (let x = 4; x < 7; x++) white(x, y);
+    const img: Rgba = { w, h, data };
+    const rect = { x: padL, y: padT, w: text.w, h: text.h };
+    // 飾りとつながった 0 は幅広の成分になり、成分としては数字に数えられない。
+    const r = readAmountBbAnchored(img, rect, digits, { minCh: 100 }, letters);
+    expect(r.value).toBeCloseTo(0.2, 5);
+  });
 });
 
 describe('stackEndsWithBb / detectDisplayMode', () => {

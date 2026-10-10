@@ -301,6 +301,13 @@ export function readAmountBb(
   return { value, conf };
 }
 
+/** "BB" の 2 文字目として認める「8 と読めた成分」の、B テンプレとの一致の下限。 */
+const B_AS_8_MIN = 0.75;
+/** 先頭の数字を拾い直すときの、数字テンプレとの一致の下限（飾り線の誤一致は実測 0.79 まで）。 */
+const LEAD_MIN_SCORE = 0.85;
+/** 先頭の数字を拾い直す窓に必要なインクの割合（何も無い場所を照合しない）。 */
+const LEAD_MIN_INK = 0.3;
+
 /**
  * 名前アンカー方式の BB スタック読取（ディレクタの two-anchor 設計）。SPEC §6.2 拡張。
  *
@@ -357,22 +364,41 @@ export function readAmountBbAnchored(
     .sort((a, b) => a.x - b.x);
   if (narrow.length < 3) return { value: NaN, conf: 0 };
   const labeled = narrow.map((c) => {
-    const m = bestMatch(normGlyph(strip, c), [...templates, ...lset]);
-    return { c, label: m.label, score: m.score };
+    const g = normGlyph(strip, c);
+    const m = bestMatch(g, [...templates, ...lset]);
+    // "8" と読めた成分が B にもよく似ているか（"BB" の 2 文字目を 8 と取り違えた場合の救済に使う）。
+    const bScore = m.label === '8' && lset.length > 0 ? bestMatch(g, lset).score : 0;
+    return { c, label: m.label, score: m.score, bScore };
   });
   const isDigit = (l: string): boolean => l.length === 1 && l >= '0' && l <= '9';
+  // 隣り合う 2 成分が "BB" の組か（どちらも B と読め、同じ高さ・近接・同じベースライン）。
+  const isBbPair = (i: number): boolean => {
+    const a = labeled[i], b = labeled[i + 1];
+    if (!a || !b) return false;
+    if (a.label !== 'B' || a.score < 0.5) return false;
+    // 2 文字目は B。ただし「B の右隣の 8」は B の取り違えとして認める（表示は必ず "BB" で終わり、
+    // B の後ろに数字は来ない。実測: 縮小した画像で 2 文字目だけ 8 と読め、"BB" が見つからず未読になり、
+    // 別のしきい値での誤読 0.5→5 が採用された）。左側の 8 は本物の数字かもしれないので認めない。
+    const bIsB = b.label === 'B' ? b.score >= 0.5 : b.label === '8' && b.bScore >= B_AS_8_MIN;
+    if (!bIsB) return false;
+    const gh = (a.c.h + b.c.h) / 2;
+    if (Math.abs(a.c.h - b.c.h) > 0.35 * gh) return false; // 同程度の高さ
+    if (b.c.x - (a.c.x + a.c.w) > 0.9 * gh) return false; // BB は近接
+    return Math.abs((a.c.y + a.c.h) - (b.c.y + b.c.h)) <= 0.3 * gh; // 同一ベースライン
+  };
 
   // BB トークン列挙。各トークンの B 高さ gh を尺度に、直左の連続数字塊を集める。
   interface Cand { digitRun: number[]; gh: number; bbX0: number; bbBottom: number; cx: number }
   const cands: Cand[] = [];
   for (let i = 0; i + 1 < labeled.length; i++) {
+    if (!isBbPair(i)) continue;
+    // B と読める成分が 3 つ以上並んでいたら、**右端の 2 つ**が "BB"（表示は必ず「数値 BB」で終わる）。
+    // 左側の「B」は、B と取り違えた数字（"8" "0" が多い）。左から組にすると、"98 BB" の "8B" を
+    // 接尾辞と見なして 9 と読んでしまう（実測: 縮小した画像で 98→9、2.8→2。信頼度は高いまま）。
+    if (isBbPair(i + 1)) continue;
     const a = labeled[i]!, b = labeled[i + 1]!;
-    if (a.label !== 'B' || b.label !== 'B' || a.score < 0.5 || b.score < 0.5) continue;
     const gh = (a.c.h + b.c.h) / 2;
-    if (Math.abs(a.c.h - b.c.h) > 0.35 * gh) continue; // 同程度の高さ
-    if (b.c.x - (a.c.x + a.c.w) > 0.9 * gh) continue; // BB は近接
     const bbBottom = (a.c.y + a.c.h + b.c.y + b.c.h) / 2;
-    if (Math.abs((a.c.y + a.c.h) - (b.c.y + b.c.h)) > 0.3 * gh) continue; // 同一ベースライン
     const run: number[] = [];
     let ref = a.c.x;
     for (let k = i - 1; k >= 0; k--) {
@@ -383,7 +409,9 @@ export function readAmountBbAnchored(
       if (g.c.y + g.c.h <= bbBottom - gh || g.c.y >= bbBottom) continue;
       // 背の低い成分（小数点候補・NCC で数字ラベルに化けても桁ではない）はスキップして左へ継続。
       if (g.c.h < 0.6 * gh) { ref = g.c.x; continue; }
-      if (!isDigit(g.label)) break; // 背の高い非数字（隣の B 等）で打ち切り
+      // 背の高い非数字で打ち切る。ただし "BB" の直左に続く「B」は、上のとおり B と取り違えた数字
+      // なので数値に含める（桁の文字は、あとで数字のテンプレだけで読み直す）。
+      if (!isDigit(g.label) && g.label !== 'B') break;
       if (g.c.h > 1.5 * gh) break; // 数字高は B 高と同程度（rigid）
       if (Math.abs(g.c.y + g.c.h - bbBottom) > 0.35 * gh) break; // 同一ベースライン
       run.unshift(k);
@@ -423,6 +451,27 @@ export function readAmountBbAnchored(
     }
   }
   numTall.sort((a, b) => a.x - b.x);
+  // 先頭の数字が札の飾り線（楕円の枠など）とつながって 1 つの大きな成分になり、数字として拾えて
+  // いない場合がある（実測: 明るくした画像で "0.5" の 0 が飾り線と融合し、5 と読んだ。信頼度は高いまま）。
+  // 成分に頼らず、いまの先頭のすぐ左を **数字 1 文字ぶんの窓**で数字テンプレと照合し、はっきり一致
+  // したら先頭に足す。窓の幅は B の幅（"1" 以外の数字と同じ）。幅の狭い窓は使わない —— 0 の左の
+  // 縦線だけで "1" に 0.93 で一致してしまう（実測）。
+  for (let round = 0; round < 2; round++) {
+    const first = numTall[0]!;
+    const gw = Math.round(labeled.find((l) => l.c.x === chosen.bbX0)?.c.w ?? first.w);
+    const top = Math.round(chosen.bbBottom - gh), h = Math.round(gh);
+    let best: { x: number; label: string; score: number } | null = null;
+    for (let x0 = first.x - gw - 1; x0 >= Math.max(0, first.x - gw - Math.round(0.9 * gh)); x0--) {
+      if (top < 0 || top + h > mask.h) break;
+      let ink = 0;
+      for (let y = top; y < top + h; y++) for (let x = x0; x < x0 + gw; x++) if (mask.data[y * mask.w + x]) ink++;
+      if (ink < LEAD_MIN_INK * gw * h) continue;
+      const m = bestMatch(normGlyph(strip, { x: x0, y: top, w: gw, h }), templates);
+      if (!best || m.score > best.score) best = { x: x0, label: m.label, score: m.score };
+    }
+    if (!best || best.score < LEAD_MIN_SCORE || !isDigit(best.label)) break;
+    numTall.unshift({ x: best.x, y: top, w: gw, h, area: gw * h });
+  }
   const firstX = numTall[0]!.x;
   const lastTall = numTall[numTall.length - 1]!;
   const lastX = lastTall.x + lastTall.w;
@@ -455,6 +504,12 @@ export function readAmountBbAnchored(
     text += m.label;
     const s = matchConfidence(m);
     if (s < minScore) minScore = s;
+  }
+  // 表示は "0.5 BB" の形で、0 で始まる 2 桁以上の数（"05"）は存在しない。小数点（数 px の点）を
+  // 拾えなかっただけなので補い、確認画面で強調されるよう信頼度を下げる。
+  if (/^0\d/.test(text)) {
+    text = `0.${text.slice(1)}`;
+    minScore = Math.min(minScore, 0.7);
   }
   const value = parseAmount(text);
   if (value === null) return { value: NaN, conf: 0 };
