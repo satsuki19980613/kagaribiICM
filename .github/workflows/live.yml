@@ -1,0 +1,40 @@
+# 本番のサイトの確認（scripts/live-check.mjs）。読み取りだけで、何も書き込まない。
+#   - サイトが届くか（index・マニフェスト・Service Worker・JS/CSS）
+#   - 保護ヘッダ。特に CSP が「このサイト以外から読み込まない・このサイト以外へ送れない」形か
+#   - index.html と配っている JS/CSS に、外部への通信先が入っていないか
+#   - Mozilla HTTP Observatory の評価が A+ か
+# 起動：Actions → Live → Run workflow、毎週月曜、ヘッダや確認スクリプトを変えて main に push したとき
+# （push のときは Cloudflare の配信が終わるのを待ってから確かめる）。
+name: Live
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['scripts/live-check.mjs', '.github/workflows/live.yml', 'packages/app/public/_headers', 'packages/app/index.html']
+  schedule:
+    - cron: '17 0 * * 1'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: live
+  cancel-in-progress: true
+
+jobs:
+  prod:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      SITE: ${{ vars.APP_ORIGIN || 'https://kagaribiicm.wsk641.workers.dev' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+      - name: Cloudflare の配信を待つ（push のときだけ）
+        if: github.event_name == 'push'
+        run: sleep 240
+      - name: 本番のサイトの確認
+        run: node scripts/live-check.mjs

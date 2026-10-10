@@ -12,14 +12,18 @@
 /manifest.webmanifest
   Cache-Control: no-cache
 
-# セキュリティヘッダー。全ページ共通。外部へ通信するのは Google Fonts だけ。
-# connect-src の data: は必須: Vite が小さな `?url` アセット（求解テーブルの *.meta.json）を data: URL として
-# ワーカーに埋め込み、ワーカーがそれを fetch する。img-src の blob: は読み込んだスクショの表示用。
-# 1行で書くこと（_headers は値の折り返しを許さない）。
+# セキュリティヘッダー。全ページ共通。`npm run preview` では付かない（Cloudflare が _headers を読んで付ける）。
+# default-src 'self'：このサイト以外からは何も読み込まず、このサイト以外へは何も送れない（フォントもこのサイトから配る。src/fonts.css）。
+# style-src 'unsafe-inline'：画面が要素ごとの style 属性（使い方ガイドの拡大位置・バブルファクター表の色）を書くため。スクリプトは 'self' だけ。
+# connect-src の data:：Vite が小さな `?url` アセット（求解テーブルの *.meta.json）を data: URL としてワーカーに埋め込み、
+#   ワーカーがそれを fetch する。data: はブラウザの中で完結し、外へは出ない。
+# img-src の blob:：読み込んだスクショの表示用（ブラウザの中だけにある画像）。
+# 1 行で書くこと（_headers は値の折り返しを許さない）。
 /*
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob:; connect-src 'self' data:; worker-src 'self' blob:; manifest-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'
   X-Content-Type-Options: nosniff
   X-Frame-Options: DENY
   Referrer-Policy: strict-origin-when-cross-origin
-  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=()
+  Strict-Transport-Security: max-age=31536000
+  Permissions-Policy: geolocation=(), microphone=(), camera=(), payment=(), usb=()
   Cross-Origin-Opener-Policy: same-origin
-  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' data: https://fonts.googleapis.com https://fonts.gstatic.com; worker-src 'self' blob:; manifest-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'

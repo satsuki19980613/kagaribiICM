@@ -47,10 +47,12 @@ export default defineConfig({
             handler: 'CacheFirst',
             options: { cacheName: 'wintie3-table', expiration: { maxEntries: 2 }, cacheableResponse: { statuses: [0, 200] } },
           },
+          // フォントはこのサイトから配る（src/fonts.css）。日本語は文字の範囲ごとに 100 以上のファイルに
+          // 分かれるので precache せず、使ったものだけ初回にキャッシュする（以後はオフラインでも出る）。
           {
-            urlPattern: /^https:\/\/fonts\.(googleapis|gstatic)\.com\/.*/,
-            handler: 'StaleWhileRevalidate',
-            options: { cacheName: 'google-fonts', expiration: { maxEntries: 20 }, cacheableResponse: { statuses: [0, 200] } },
+            urlPattern: /\.woff2?$/,
+            handler: 'CacheFirst',
+            options: { cacheName: 'fonts', expiration: { maxEntries: 400 }, cacheableResponse: { statuses: [0, 200] } },
           },
         ],
       },
