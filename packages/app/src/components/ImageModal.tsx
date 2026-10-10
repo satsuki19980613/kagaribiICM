@@ -10,11 +10,13 @@ import { Modal } from './ui';
 export function ImageModal(props: { src: string; readout?: OcrReadout; onClose: () => void }): JSX.Element {
   const [zoom, setZoom] = useState(false);
   const view = props.readout ? buildOcrReadoutView(props.readout) : null;
+  // 表示するのは、読み込んだスクショから作ったブラウザ内の画像（blob:）だけ。
+  const src = props.src.startsWith('blob:') ? props.src : '';
 
   return (
     <Modal eyebrow="IMAGE" title={view ? '元画像と読み取り結果' : '元画像'} size="wide" onClose={props.onClose}>
       <div className={`imgv${zoom ? ' zoom' : ''}`} onClick={() => setZoom((z) => !z)}>
-        <img src={props.src} alt="読み取り元のスクリーンショット" />
+        {src && <img src={src} alt="読み取り元のスクリーンショット" />}
       </div>
 
       {view && (

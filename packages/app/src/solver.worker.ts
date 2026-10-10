@@ -218,6 +218,8 @@ function toDto(
 }
 
 self.onmessage = async (e: MessageEvent<SolveRequest | McResultMsg>): Promise<void> => {
+  // 専用ワーカーに届くのは、起動したページ（このアプリ）からのメッセージだけ。その origin は空文字になる。
+  if (e.origin !== '' && e.origin !== self.location.origin) return;
   const data = e.data;
   // メインから返る MC 結果はここで受けて mcRunner の Promise を解決する
   // （SolveRequest には kind が無いため、'kind' の有無で判別できる）。

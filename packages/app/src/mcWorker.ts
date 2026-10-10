@@ -18,6 +18,7 @@ import {
   computeShowdown3ExactDenseChunk,
   loadWinTie3TableBrowser,
   type ShowdownMcJob,
+  type ShowdownNode,
   type ShowdownMcResult,
   type Exact3DenseChunk,
   type WinTie3Table,
@@ -36,18 +37,36 @@ function getWinTie3(): Promise<WinTie3Table> {
   return winTie3Promise;
 }
 
+/** 席番号として正しい値（0..n-1 の整数）だけを通す。配列の添字に使う前に必ず通す。 */
+function seatIndex(x: unknown, n: number): number {
+  for (let i = 0; i < n; i++) if (x === i) return i;
+  throw new Error('invalid seat index in showdown job');
+}
+
+/** 受け取ったジョブの形を確かめる（席数 2〜6、配列の長さ、参加者の席番号）。おかしければ計算しない。 */
+function checkedNode(node: ShowdownNode): ShowdownNode {
+  const n = node.preHandStacks.length;
+  if (!(n >= 2 && n <= 6) || node.commits.length !== n || node.payouts.length !== n) {
+    throw new Error('invalid showdown job');
+  }
+  return { ...node, participants: node.participants.map((p) => seatIndex(p, n)) };
+}
+
 self.onmessage = async (e: MessageEvent<Req>): Promise<void> => {
+  // 専用ワーカーに届くのは、起動したページ（このアプリ）からのメッセージだけ。その origin は空文字になる。
+  if (e.origin !== '' && e.origin !== self.location.origin) return;
   const { job } = e.data;
   try {
+    const node = checkedNode(job.node);
     let res: ShowdownMcResult | Exact3DenseChunk;
     if (job.exact3Chunk) {
       const table = await getWinTie3();
-      res = computeShowdown3ExactDenseChunk(job.node, job.ranges, table, job.exact3Chunk.lo, job.exact3Chunk.hi);
+      res = computeShowdown3ExactDenseChunk(node, job.ranges, table, job.exact3Chunk.lo, job.exact3Chunk.hi);
     } else if (job.exact3) {
       const table = await getWinTie3();
-      res = computeShowdown3Exact(job.node, job.ranges, table);
+      res = computeShowdown3Exact(node, job.ranges, table);
     } else {
-      res = computeShowdownMc(job.node, job.ranges, job.samples, job.seed, job.strat);
+      res = computeShowdownMc(node, job.ranges, job.samples, job.seed, job.strat);
     }
     self.postMessage({ ok: true, res });
   } catch (err) {
