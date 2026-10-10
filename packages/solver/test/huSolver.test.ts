@@ -45,6 +45,12 @@ const GATE_PT = (0.05 / 100) * 16; // 0.008
 
 const idx = (label: string) => HAND_CLASS_ORDER.indexOf(label);
 
+/**
+ * 何通りも解く重いテストの制限時間。手元では 2〜3 秒だが、CI の混んだ機械では既定の 5 秒を
+ * わずかに超えることがある（2026-10-10: 5.2 秒で失敗。ソルバーは変えていないコミット）。
+ */
+const SLOW_TEST_MS = 30_000;
+
 describe('HU push/fold ソルバー: 収束と exploitability（1-6, 1-7）', () => {
   it('複数スタックでゲート未満に収束する', () => {
     for (const eff of [3, 6, 10, 15, 20]) {
@@ -53,7 +59,7 @@ describe('HU push/fold ソルバー: 収束と exploitability（1-6, 1-7）', ()
       expect(r.converged).toBe(true);
       expect(r.nodes[0]!.quality.exploitability).toBe(r.exploitabilityPt);
     }
-  });
+  }, SLOW_TEST_MS);
 
   it('不均等スタックでも収束する', () => {
     for (const [a, b] of [
@@ -117,7 +123,7 @@ describe('保存則と EQPre の一致（1-9）', () => {
       const r = solveHu(makeHu(eff, eff), { table });
       expect(r.eqPost.sb + r.eqPost.bb).toBeCloseTo(8, 6);
     }
-  });
+  }, SLOW_TEST_MS);
 
   it('ノードの equity にも pre/post が入り和が 8', () => {
     const r = solveHu(makeHu(10, 12), { table });
@@ -146,7 +152,7 @@ describe('戦略の定性的性質', () => {
       expect(r.nodes[0]!.pct).toBeLessThan(prev);
       prev = r.nodes[0]!.pct;
     }
-  });
+  }, SLOW_TEST_MS);
 
   it('2bb は push ほぼ any-two・BB call 100%', () => {
     const r = solveHu(makeHu(2, 2), { table });
