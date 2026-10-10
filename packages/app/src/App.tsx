@@ -5,6 +5,7 @@ import { blindsUnresolved, withUserBlinds, type OcrReadout, type RawReads } from
 import { backLayers } from './backLayers';
 import { createBackController } from './navHistory';
 import { buildBoardState, defaultForm, reconcilePositions, type BoardForm } from './formModel';
+import { rasterPreviewUrl } from './ocr/decodeImage';
 import { reprefillForGameMode } from './ocr/prefill';
 import { prefillFromScreenshot, type OcrPrefillResult } from './ocr/screenshotPrefill';
 import { evLossOf, finishRecord, headlineNode, startRecord, type HeroAction, type SpotRecord } from './records/model';
@@ -289,7 +290,8 @@ export function App(): JSX.Element {
     if (ocrBusy || jobRunning) return;
     setOcrBusy(true);
     setErrFromPhoto(true);
-    setOcrImage(URL.createObjectURL(file));
+    // 表示するのは描き直した画像だけ（選ばれたファイルそのものは表示しない。decodeImage.ts）。
+    setOcrImage(await rasterPreviewUrl(file).catch(() => null));
     setReadout(undefined);
     setImageSize(undefined);
     setOcrReads(null);

@@ -26,3 +26,26 @@ export async function decodeToRgba(blob: Blob): Promise<Rgba> {
     bitmap.close();
   }
 }
+
+/**
+ * 確認用に表示する画像の URL を作る。**選ばれたファイルをそのまま表示せず**、ブラウザで復号して
+ * Canvas に描き直したもの（必ずラスタ画像）を blob: URL にする。画像として復号できないファイルは
+ * 表示されず、写真に付いているメタデータ（撮影情報など）も描き直しで落ちる。
+ * 使い終わったら URL.revokeObjectURL で解放すること。
+ */
+export async function rasterPreviewUrl(file: Blob): Promise<string> {
+  const bitmap = await createImageBitmap(file);
+  try {
+    const canvas = document.createElement('canvas');
+    canvas.width = bitmap.width;
+    canvas.height = bitmap.height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('2D Canvas コンテキストを取得できませんでした');
+    ctx.drawImage(bitmap, 0, 0);
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/webp', 0.92));
+    if (!blob) throw new Error('画像を描き直せませんでした');
+    return URL.createObjectURL(blob);
+  } finally {
+    bitmap.close();
+  }
+}
