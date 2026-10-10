@@ -76,7 +76,7 @@
 | 万一コードに送る処理が紛れても、ブラウザが止める | 応答ヘッダの CSP で、このサイト以外への通信・このサイト以外からの読み込みを禁じる。スクリプトはこのサイトのファイルだけ | [packages/app/public/_headers](packages/app/public/_headers)。本番に付いているかを毎週確かめる [scripts/live-check.mjs](scripts/live-check.mjs) |
 | 開いただけで第三者に通信しない | フォントもこのサイトから配る。アクセス解析や広告の部品を入れない | [packages/app/src/fonts.css](packages/app/src/fonts.css)・[packages/app/index.html](packages/app/index.html) |
 | 記録は端末の中だけに置く | ブラウザの IndexedDB に書く。送る処理は無い | [packages/app/src/records/store.ts](packages/app/src/records/store.ts) |
-| 画面を乗っ取られない | 入力はスクショから読んだ数値と手入力だけで、表示は React が無害化する。HTML を直接組み立てるのは、使い方ガイドの固定の文言だけ | [packages/app/src/components/guide/guideScript.ts](packages/app/src/components/guide/guideScript.ts)・[packages/app/public/_headers](packages/app/public/_headers) |
+| 画面を乗っ取られない | 入力はスクショから読んだ数値と手入力だけで、表示は React が無害化する。HTML を直接組み立てるのは、使い方ガイドの固定の文言だけ。確認用に表示する元画像は、選んだファイルそのものではなく、ブラウザで描き直した画像にする | [packages/app/src/components/guide/guideScript.ts](packages/app/src/components/guide/guideScript.ts)・[packages/app/src/ocr/decodeImage.ts](packages/app/src/ocr/decodeImage.ts)・[packages/app/public/_headers](packages/app/public/_headers) |
 | ほかのサイトに埋め込まれない | `frame-ancestors 'none'` と `X-Frame-Options: DENY` | [packages/app/public/_headers](packages/app/public/_headers) |
 | 鍵やパスワードを漏らさない | サーバーもデータベースも無いので、秘密の値がそもそも無い。リポジトリにも置いていない | このリポジトリ全体 |
 | 計算を間違えにくくする | 700 件を超えるテスト（ICM・ショーダウンの厳密計算・別実装のソルバーどうしの照合・読み取り）を、コードを変えるたびに回す | [packages/solver/test](packages/solver/test)・[packages/ocr/src](packages/ocr/src)・[.github/workflows/ci.yml](.github/workflows/ci.yml) |
@@ -90,7 +90,7 @@
 | [CI](https://github.com/satsuki19980613/kagaribiICM/actions/workflows/ci.yml) | 型チェック・テスト・ビルド | コードを変えるたび |
 | [Live](https://github.com/satsuki19980613/kagaribiICM/actions/workflows/live.yml) | 本番のサイトに届くか。保護ヘッダが付いていて、このサイト以外へ通信できない設定になっているか。配っているファイルに外部の通信先が入っていないか。Cookie を発行していないか。Observatory の評価が A+ のままか | 毎週と、ヘッダや確認の中身を変えたとき |
 | [CodeQL](https://github.com/satsuki19980613/kagaribiICM/actions/workflows/codeql.yml) | GitHub 公式のコードスキャン（危ない書き方が無いか） | コードを変えるたびと毎週 |
-| [Mozilla HTTP Observatory](https://developer.mozilla.org/en-US/observatory/analyze?host=kagaribiicm.wsk641.workers.dev) | 公開しているサイトの保護ヘッダ。**A+**（OBS_SCORE 点、OBS_TESTS 項目すべて合格。OBS_DATE に測定） | リンク先でいつでも測り直せる |
+| [Mozilla HTTP Observatory](https://developer.mozilla.org/en-US/observatory/analyze?host=kagaribiicm.wsk641.workers.dev) | 公開しているサイトの保護ヘッダ。**A+**（125 点、12 項目すべて合格。2026-10-10 に測定） | リンク先でいつでも測り直せる |
 
 ほかに、使っている部品に弱点が見つかったら GitHub から知らせが届くようにしています（Dependabot）。
 
