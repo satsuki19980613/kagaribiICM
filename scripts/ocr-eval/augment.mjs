@@ -8,17 +8,13 @@
 //
 //   node scripts/ocr-eval/augment.mjs     （= npm run ocr:augment）
 //   → ocr-local/images/aug__<種類>__<元の名前>.<拡張子> と、truth.json の generated な項目を作り直す
-import { existsSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from 'node:fs';
+import { readFileSync, readdirSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import sharp from 'sharp';
 
 const dir = resolve(process.env.OCR_EVAL_DIR ?? 'ocr-local');
 const imgDir = join(dir, 'images');
 const truthPath = join(dir, 'truth.json');
-if (!existsSync(truthPath)) {
-  console.error(`正解がありません: ${truthPath}`);
-  process.exit(1);
-}
 
 /** 種類ごとの変換。kind は集計の切り口（variant より粗い）。 */
 const VARIANTS = [
@@ -39,7 +35,13 @@ const VARIANTS = [
   { name: 'blur06', kind: 'ぼけ', ext: 'png', run: (s) => s.blur(0.6).png() },
 ];
 
-const truth = JSON.parse(readFileSync(truthPath, 'utf8'));
+let truth;
+try {
+  truth = JSON.parse(readFileSync(truthPath, 'utf8'));
+} catch (e) {
+  console.error(`正解を読めません: ${truthPath}（${e instanceof Error ? e.message : e}）`);
+  process.exit(1);
+}
 const originals = truth.frames.filter((f) => !f.generated);
 
 // 前回の複製を消す。
@@ -47,12 +49,16 @@ for (const f of readdirSync(imgDir)) if (f.startsWith('aug__')) unlinkSync(join(
 
 const generated = [];
 for (const base of originals) {
-  const src = join(imgDir, base.file);
-  if (!existsSync(src)) continue;
+  let input;
+  try {
+    input = readFileSync(join(imgDir, base.file));
+  } catch {
+    continue; // 正解はあるが画像が無い
+  }
   const stem = base.file.replace(/\.[^.]+$/, '');
   for (const v of VARIANTS) {
     const file = `aug__${v.name}__${stem}.${v.ext}`;
-    await v.run(sharp(src)).toFile(join(imgDir, file));
+    writeFileSync(join(imgDir, file), await v.run(sharp(input)).toBuffer());
     generated.push({
       ...base,
       file,
