@@ -34,7 +34,7 @@ describe('validate', () => {
   });
 
   it('オブジェクト: 宣言した項目だけを写し、問題は場所つきですべて集める', () => {
-    const v = obj<{ a: number; b?: string | undefined; c: { d: number } }>({
+    const v = obj<{ a: number; b?: string; c: { d: number } }>({
       a: num(),
       b: optional(str()),
       c: obj<{ d: number }>({ d: num({ min: 0 }) }),

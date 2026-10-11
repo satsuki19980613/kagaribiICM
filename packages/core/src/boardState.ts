@@ -18,9 +18,9 @@ export type SeatState = (typeof SEAT_STATES)[number];
 
 /** 読み取りの確かさ（0〜1）。どの項目も省略できる。 */
 export interface SeatConfidence {
-  stack?: number | undefined;
-  bet?: number | undefined;
-  state?: number | undefined;
+  stack?: number;
+  bet?: number;
+  state?: number;
 }
 
 export interface Seat {
@@ -28,8 +28,8 @@ export interface Seat {
   stack: number;
   state: SeatState;
   bet: number;
-  name?: string | undefined;
-  confidence?: SeatConfidence | undefined;
+  name?: string;
+  confidence?: SeatConfidence;
 }
 
 export interface Ante {
@@ -50,31 +50,31 @@ export interface BoardState {
   playersLeft: number;
   seats: Seat[];
   heroPos: Position;
-  pot?: number | undefined;
-  heroHandConfidence?: number | undefined;
+  pot?: number;
+  heroHandConfidence?: number;
   /**
    * どのゲームモードの局面か（プライズ表・開始スタックが決まる）。**省略時はクラブマッチ**。
    * `results.spot` は BoardState をそのまま jsonb で持つので、ここに足すだけで記録にも
    * Worker にも自動で流れる（DB マイグレーション不要）。v3 以前の記録は未指定＝クラブ。
    */
-  gameMode?: GameMode | undefined;
+  gameMode?: GameMode;
   /**
    * ミニレイズ・ゲームで解くときのレイズ額（BB 単位の総ベット額, 例 2）。**省略時は AOF**。
    * 最初に参加する人だけがこの額までレイズでき、ほかは全員オールインかフォールドのみ
    * （さつき決定 2026-10-09 の B 案）。レイズした人はオールインを受けたらコールかフォールド。
    */
-  raiseTo?: number | undefined;
+  raiseTo?: number;
   /**
    * レイズした人のレイズレンジを「上位 N%」と仮定して解く（N は 1〜100）。**省略時はレンジも
    * ソルバーが決める**（均衡のレンジ。罠だけの狭いレンジになりやすい）。raiseTo があるときだけ意味を持つ。
    */
-  raiseRange?: number | undefined;
+  raiseRange?: number;
   /**
    * hero の判断までに起きたアクション（席 → 'F' / 'R' / 'P' / 'C'）。hero の決定ノードを
    * 結果画面の見出しに選ぶために使う。hero 自身が 'R' なら「レイズ後にオールインを受けた」判断。
    * 省略時は従来どおり（hero の未開ノード）。
    */
-  line?: Partial<Record<Position, ActionChar>> | undefined;
+  line?: Partial<Record<Position, ActionChar>>;
 }
 
 /** BB 単位の額（0 以上の有限の数）。 */
