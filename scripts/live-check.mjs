@@ -7,15 +7,22 @@
 //   5. Mozilla HTTP Observatory の評価が A+ で、不合格の項目が無い
 // 環境変数: SITE（既定 https://kagaribiicm.wsk641.workers.dev）、SKIP_OBSERVATORY=1 で 5 を飛ばす。
 
-const SITE = (process.env.SITE || 'https://kagaribiicm.wsk641.workers.dev').replace(/\/+$/, '');
+let SITE = process.env.SITE || 'https://kagaribiicm.wsk641.workers.dev';
+while (SITE.endsWith('/')) SITE = SITE.slice(0, -1);
 const HOST = new URL(SITE).host;
 
+// サイトや Observatory から受け取った文字をそのまま出さない: 改行が入っていると、続きの行が
+// GitHub Actions の命令（`::error::` など）として読まれる。
+const oneLine = (v) => String(v).replace(/[\r\n]+/g, ' ');
+/** 並べるものがあれば「（a, b）」、無ければ空。 */
+const listed = (items) => (items.length ? `（${items.join(', ')}）` : '');
+
 let failed = 0;
-const ok = (msg) => console.log(`  ok   ${msg}`);
-const warn = (msg) => console.log(`::warning::${msg}`);
+const ok = (msg) => console.log(`  ok   ${oneLine(msg)}`);
+const warn = (msg) => console.log(`::warning::${oneLine(msg)}`);
 const fail = (msg) => {
   failed++;
-  console.log(`::error::${msg}`);
+  console.log(`::error::${oneLine(msg)}`);
 };
 const check = (cond, msg) => (cond ? ok(msg) : fail(msg));
 
@@ -42,10 +49,12 @@ console.log(`== 1. サイトが届く（${SITE}）`);
 const index = await get('');
 check(index.res.status === 200, `index が 200（${index.res.status}）`);
 check(index.text.includes('<div id="root">'), 'index にアプリの枠がある');
-for (const p of ['manifest.webmanifest', 'sw.js', 'theme.js', 'icon.svg']) {
-  const r = await get(p);
-  check(r.res.status === 200, `${p} が 200（${r.res.status}）`);
-}
+const STATIC_FILES = ['manifest.webmanifest', 'sw.js', 'theme.js', 'icon.svg'];
+const staticFiles = await Promise.all(STATIC_FILES.map((p) => get(p)));
+STATIC_FILES.forEach((p, i) => {
+  const { res } = staticFiles[i];
+  check(res.status === 200, `${p} が 200（${res.status}）`);
+});
 
 console.log('== 2. 保護ヘッダ');
 const h = index.res.headers;
@@ -58,8 +67,8 @@ check((csp['frame-ancestors'] || []).join(' ') === "'none'", "CSP frame-ancestor
 check((csp['base-uri'] || []).join(' ') === "'self'", "CSP base-uri は 'self'");
 check((csp['form-action'] || []).join(' ') === "'self'", "CSP form-action は 'self'");
 // どの directive にも、このサイト以外の宛先が無い＝ブラウザはこのサイト以外へ通信できない。
-const external = Object.entries(csp).flatMap(([d, vals]) => vals.filter((v) => !LOCAL_SOURCES.has(v)).map((v) => `${d} ${v}`));
-check(external.length === 0, `CSP に外部の宛先が無い${external.length ? `（${external.join(', ')}）` : ''}`);
+const externalSources = Object.entries(csp).flatMap(([d, vals]) => vals.filter((v) => !LOCAL_SOURCES.has(v)).map((v) => `${d} ${v}`));
+check(externalSources.length === 0, `CSP に外部の宛先が無い${listed(externalSources)}`);
 check(h.get('x-content-type-options') === 'nosniff', 'X-Content-Type-Options: nosniff');
 check(/^(strict-origin-when-cross-origin|no-referrer|same-origin|strict-origin)$/.test(h.get('referrer-policy') || ''), `Referrer-Policy（${h.get('referrer-policy')}）`);
 check(/max-age=\d{7,}/.test(h.get('strict-transport-security') || ''), `Strict-Transport-Security（${h.get('strict-transport-security')}）`);
@@ -70,19 +79,21 @@ check(!h.get('set-cookie'), 'Cookie を発行しない');
 console.log('== 3. index.html が外部のファイルを読み込んでいない');
 const refs = [...index.text.matchAll(/<(?:script|link|img)\b[^>]*?\b(?:src|href)="([^"]+)"/g)].map((m) => m[1]);
 const outside = refs.filter((r) => /^(https?:)?\/\//.test(r) && new URL(r, SITE).host !== HOST);
-check(outside.length === 0, `外部の src / href が無い${outside.length ? `（${outside.join(', ')}）` : ''}`);
+check(outside.length === 0, `外部の src / href が無い${listed(outside)}`);
 check(!/<script(?![^>]*\bsrc=)[^>]*>[^<]*\S/.test(index.text), 'インラインのスクリプトが無い');
 
 console.log('== 4. 配っている JS/CSS に想定外の外部の URL が無い');
 // 文字列として入っているだけで通信はしないもの（XML の名前空間、ライブラリのエラーメッセージの案内先）。
 const KNOWN_STRINGS = new Set(['www.w3.org', 'reactjs.org', 'react.dev', 'bit.ly']);
 const assets = new Set(refs.filter((r) => /\.(js|css)$/.test(r) && !outside.includes(r)));
-const sw = await get('sw.js');
+const sw = staticFiles[STATIC_FILES.indexOf('sw.js')];
 for (const m of sw.text.matchAll(/url:"([^"]+\.(?:js|css))"/g)) assets.add(m[1]);
 let scanned = 0;
 const unknown = new Map();
-for (const a of assets) {
-  const r = await get(a);
+const assetList = [...assets];
+const fetched = await Promise.all(assetList.map((a) => get(a)));
+for (const [i, a] of assetList.entries()) {
+  const r = fetched[i];
   if (r.res.status !== 200) {
     fail(`${a} が ${r.res.status}`);
     continue;
@@ -98,7 +109,7 @@ for (const a of assets) {
   }
 }
 check(scanned > 0, `${scanned} 個の JS/CSS を読んだ`);
-check(unknown.size === 0, `想定外の外部の URL が無い${unknown.size ? `（${[...unknown].map(([k, v]) => `${k} in ${v}`).join(', ')}）` : ''}`);
+check(unknown.size === 0, `想定外の外部の URL が無い${listed([...unknown].map(([k, v]) => `${k} in ${v}`))}`);
 
 if (process.env.SKIP_OBSERVATORY !== '1') {
   console.log('== 5. Mozilla HTTP Observatory');
@@ -109,8 +120,8 @@ if (process.env.SKIP_OBSERVATORY !== '1') {
       // Observatory 側の都合（混雑・一時的な失敗）は、こちらの失敗にしない。
       warn(`Observatory から結果を取れなかった（${res.status} ${j.error || ''}）`);
     } else {
-      console.log(`  grade ${j.grade} / score ${j.score} / passed ${j.tests_passed}/${j.tests_quantity}（${j.scanned_at}）`);
-      console.log(`  ${j.details_url}`);
+      console.log(oneLine(`  grade ${j.grade} / score ${j.score} / passed ${j.tests_passed}/${j.tests_quantity}（${j.scanned_at}）`));
+      console.log(oneLine(`  ${j.details_url}`));
       check(j.grade === 'A+', `評価が A+（${j.grade}）`);
       check(j.tests_failed === 0, `不合格の項目が無い（${j.tests_failed}）`);
     }

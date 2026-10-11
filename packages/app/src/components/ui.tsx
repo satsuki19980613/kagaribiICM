@@ -48,7 +48,7 @@ export function Dots(): JSX.Element {
 }
 
 /** ← BACK（pane 左上の戻る）。 */
-export function Back(props: { label?: string; onClick: () => void }): JSX.Element {
+export function Back(props: Readonly<{ label?: string; onClick: () => void }>): JSX.Element {
   return (
     <button type="button" className="back" onClick={props.onClick}>
       ← {props.label ?? 'BACK'}
@@ -57,7 +57,7 @@ export function Back(props: { label?: string; onClick: () => void }): JSX.Elemen
 }
 
 /** pane の見出し（eyebrow + 和文タイトル + 右端の操作）。 */
-export function PaneHead(props: { eyebrow: string; title: string; children?: ReactNode }): JSX.Element {
+export function PaneHead(props: Readonly<{ eyebrow: string; title: string; children?: ReactNode }>): JSX.Element {
   return (
     <div className="pane-h">
       <span className="eyebrow">{props.eyebrow}</span>
@@ -71,7 +71,7 @@ export function PaneHead(props: { eyebrow: string; title: string; children?: Rea
  * ガラスのモーダル（`<dialog>` を showModal で最前面へ）。開いている間だけマウントする前提。
  * Esc はブラウザの cancel（最前面の dialog だけに届く）で、端末の戻るは backLayers で閉じる。
  */
-export function Modal(props: {
+export function Modal(props: Readonly<{
   eyebrow: string;
   title: string;
   onClose: () => void;
@@ -80,7 +80,7 @@ export function Modal(props: {
   headActions?: ReactNode;
   foot?: ReactNode;
   children: ReactNode;
-}): JSX.Element {
+}>): JSX.Element {
   const ref = useRef<HTMLDialogElement>(null);
   useBackLayer(props.onClose);
 
@@ -89,17 +89,27 @@ export function Modal(props: {
     if (d && !d.open) d.showModal();
   }, []);
 
+  // 枠の外（dialog 自身＝背景）を押したら閉じる。キーボードでは Esc（onCancel）と × で閉じられる。
+  const { onClose } = props;
+  useEffect(() => {
+    const d = ref.current;
+    if (!d) return;
+    const onBackdrop = (e: MouseEvent): void => {
+      if (e.target === d) onClose();
+    };
+    d.addEventListener('click', onBackdrop);
+    return () => d.removeEventListener('click', onBackdrop);
+  }, [onClose]);
+
+  const sizeClass = props.size ? ` ${props.size}` : '';
   return (
     <dialog
       ref={ref}
-      className={`glass-dlg${props.size ? ` ${props.size}` : ''}`}
+      className={`glass-dlg${sizeClass}`}
       aria-label={props.title}
       onCancel={(e) => {
         e.preventDefault();
         props.onClose();
-      }}
-      onClick={(e) => {
-        if (e.target === e.currentTarget) props.onClose();
       }}
     >
       <div className="dlg">
@@ -117,7 +127,7 @@ export function Modal(props: {
 }
 
 /** 確認ダイアログ（削除など）。 */
-export function ConfirmDialog(props: {
+export function ConfirmDialog(props: Readonly<{
   eyebrow: string;
   title: string;
   body?: string;
@@ -125,7 +135,7 @@ export function ConfirmDialog(props: {
   danger?: boolean;
   onOk: () => void;
   onClose: () => void;
-}): JSX.Element {
+}>): JSX.Element {
   return (
     <Modal
       eyebrow={props.eyebrow}

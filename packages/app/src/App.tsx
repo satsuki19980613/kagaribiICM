@@ -13,9 +13,8 @@ import { evLossOf, finishRecord, headlineNode, startRecord, type HeroAction, typ
 import { deleteRecord, listRecords, putRecord } from './records/store';
 import { IDLE_JOB, canStartSolve, completeJob, createStartLatch, failJob, startJob, type SolveJob } from './solveJob';
 import { solveInWorker } from './solverClient';
-import { Confirm, type ModeNote } from './components/Confirm';
+import { Confirm, type ChipMismatch, type ModeNote } from './components/Confirm';
 import { ErrorView } from './components/ErrorView';
-import type { ChipMismatch } from './components/Confirm';
 import { DEFAULT_GAME_SEL, selFromMode, selectedMode, type GameSel } from './components/GameModeSelect';
 import { HelpModal, IcmInput } from './components/IcmInput';
 import { InputForm } from './components/InputForm';
@@ -61,7 +60,7 @@ function imageFrom(list: FileList | DataTransferItemList | null | undefined): Fi
   if (!list) return null;
   for (const it of Array.from(list as ArrayLike<File | DataTransferItem>)) {
     const f = it instanceof File ? it : it.kind === 'file' ? it.getAsFile() : null;
-    if (f && f.type.startsWith('image/')) return f;
+    if (f?.type.startsWith('image/')) return f;
   }
   return null;
 }
@@ -212,7 +211,8 @@ export function App(): JSX.Element {
     const trial = reprefillForGameMode(next, gameMode, imageSize);
     if (!trial.ok || !trial.form) {
       const msg = bb ? `SB/BB ${label} では読み直せませんでした。` : 'SB/BB の設定を外すと読み直せませんでした。';
-      setModeNote({ ok: false, text: `${msg}${trial.issues[0] ? `（${trial.issues[0]}）` : ''}` });
+      const why = trial.issues[0] ? `（${trial.issues[0]}）` : '';
+      setModeNote({ ok: false, text: `${msg}${why}` });
       if (fromError) setIssues([msg, ...trial.issues]);
       return;
     }

@@ -37,7 +37,7 @@
  * - per-class equity は epoch MC のクラス別バケットで、サンプル数に応じたノイズ床を持つ。
  */
 
-import type { BoardState, SolutionNode, Position } from '@kagaribi/core';
+import type { ActionChar, BoardState, SolutionNode, Position } from '@kagaribi/core';
 import {
   normalizeKey,
   formatRange,
@@ -45,7 +45,6 @@ import {
   parseHandClass,
   positionsForPlayersLeft,
 } from '@kagaribi/core';
-import type { ActionChar } from '@kagaribi/core';
 import { icmEquities, payoutsForPlayers } from './icm.js';
 import { finalStacksFromShowdown } from './sidepot.js';
 import { HAND_CLASS_ORDER } from './huEquity.js';
@@ -56,7 +55,6 @@ import { computeShowdownMc, DEFAULT_STRAT, type ShowdownMcResult, type StratSpec
 import {
   computeShowdown2Exact,
   computeShowdown3Exact,
-  computeShowdown3ExactDenseChunk,
   mergeShowdown3ExactDenseChunks,
   rankClassesByEquityVs,
   exact3LookupCost,
@@ -511,7 +509,6 @@ function buildEngine(
 
   // --- 決定ノードの列挙 ---
   const nodes: NodeDesc[] = [];
-  const nodeById = new Map<number, NodeDesc>();
   for (let i = 0; i < n; i++) {
     for (let S = 0; S < 1 << i; S++) {
       if (i === last && S === 0) continue; // ウォーク（決定でない）
@@ -528,7 +525,6 @@ function buildEngine(
       const key = normalizeKey(n, actions);
       const node: NodeDesc = { i, S, id, actor: order[i]!, actionType, key, truncated: pc >= maxActive };
       nodes.push(node);
-      nodeById.set(id, node);
     }
   }
   const nodeId = (i: number, S: number): number => i * 64 + S;
@@ -1082,7 +1078,7 @@ function initStrategies(eng: Engine, warm?: Map<string, F64>): Map<number, F64> 
       continue;
     }
     const w = warm?.get(nd.key);
-    strat.set(nd.id, w && w.length === N_CLASSES ? Float64Array.from(w) : new Float64Array(N_CLASSES).fill(0.5));
+    strat.set(nd.id, w?.length === N_CLASSES ? Float64Array.from(w) : new Float64Array(N_CLASSES).fill(0.5));
   }
   return strat;
 }

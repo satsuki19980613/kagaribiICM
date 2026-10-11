@@ -331,7 +331,7 @@ async function stepLoad(x: Ctx, st: Stage): Promise<void> {
   m.innerHTML = `<div class="list-h"><span class="eyebrow">INPUT</span></div>${INPUT('読み取り中…', DOTS)}`;
   await x.wait(1600);
   sheet.remove();
-  m = await swap(x, st, m, `<div class="pane-h"><span class="eyebrow">CONFIRM</span><b>条件確認</b></div>${SPEC}`);
+  await swap(x, st, m, `<div class="pane-h"><span class="eyebrow">CONFIRM</span><b>条件確認</b></div>${SPEC}`);
   strip(x, st, note('CONFIRM', '読み取り結果を確認'));
   await x.wait(2400);
 }
@@ -376,7 +376,7 @@ async function stepCalc(x: Ctx, st: Stage): Promise<void> {
   strip(x, st, read('DONE', 'FOLD', '72o・BU'));
   await x.wait(1100);
   await tap(x, st, q(m, '.rec-main'));
-  m = await swap(x, st, m, VERDICT);
+  await swap(x, st, m, VERDICT);
   strip(x, st, `<span class="gs-r"><b class="c-push">PUSH</b><span>オレンジ</span><b class="c-fold">FOLD</b><span>青</span></span>`);
   await x.wait(3000);
 }

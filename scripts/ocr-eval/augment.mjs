@@ -161,7 +161,7 @@ for (const base of originals) {
       file,
       generated: true,
       source: `${base.file} の複製（${v.name}）`,
-      tags: { ...(base.tags ?? {}), quality: v.kind, variant: v.name, base: base.file },
+      tags: { ...base.tags, quality: v.kind, variant: v.name, base: base.file },
     });
   }
 }

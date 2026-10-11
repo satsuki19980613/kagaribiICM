@@ -38,14 +38,14 @@ function hasAction(state: BoardState): boolean {
 }
 
 /** 計算結果。自分の選択（ALL IN / FOLD / 未選択）は押した時点で記録に保存する。 */
-export function Result(props: {
+export function Result(props: Readonly<{
   state: BoardState;
   result: SolveResultDto;
   ms: number;
   heroAction: HeroAction | null;
   onSelectAction: (action: HeroAction | null) => Promise<void>;
   onBack: () => void;
-}): JSX.Element {
+}>): JSX.Element {
   const { result, state } = props;
   const headline = headlineNode(result);
   const heroSeat = state.seats.find((s) => s.pos === result.heroPos);

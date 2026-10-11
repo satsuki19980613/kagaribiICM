@@ -15,14 +15,14 @@ function fmtDate(ms: number): string {
  * 記録タブ。計算を始めた時点で自動で残り、計算中 / 完了 / 失敗・中断の 3 状態を持つ。
  * 完了した行を開くと結果画面（自分の選択を編集できる）。
  */
-export function RecordsView(props: {
+export function RecordsView(props: Readonly<{
   records: SpotRecord[];
   onOpen: (rec: SpotRecord) => void;
   onDelete: (rec: SpotRecord) => void;
   onRetry: (rec: SpotRecord) => void;
   jobRunning: boolean;
   onGoIcm: () => void;
-}): JSX.Element {
+}>): JSX.Element {
   const { records } = props;
   const stats = aggregate(records);
   const [delTarget, setDelTarget] = useState<SpotRecord | null>(null);

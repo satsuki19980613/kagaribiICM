@@ -8,7 +8,9 @@
  * ヘッズアップでは SB がボタン（SPEC §6.4）。プリフロップは SB が先に行動する。
  */
 
-export const POSITIONS = ['UTG', 'HJ', 'CO', 'BU', 'SB', 'BB'] as const;
+import { compareCodeUnits } from './compare.js';
+
+export const POSITIONS =['UTG', 'HJ', 'CO', 'BU', 'SB', 'BB'] as const;
 export type Position = (typeof POSITIONS)[number];
 
 /**
@@ -47,7 +49,7 @@ export function positionsMatchPlayersLeft(positions: readonly string[], n: numbe
   if (!isValidPlayersLeft(n)) return false;
   const expected = positionsForPlayersLeft(n);
   if (positions.length !== expected.length) return false;
-  const a = [...positions].sort();
-  const b = [...expected].sort();
+  const a = [...positions].sort(compareCodeUnits);
+  const b = [...expected].sort(compareCodeUnits);
   return a.every((p, i) => p === b[i]);
 }

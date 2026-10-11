@@ -37,18 +37,16 @@ export function ReadConditionsList(): JSX.Element {
 }
 
 /** ヘッダの「?」。アニメーションの使い方ガイドと、読み取れる条件。 */
-export function HelpModal(props: { onClose: () => void }): JSX.Element {
+export function HelpModal(props: Readonly<{ onClose: () => void }>): JSX.Element {
   return (
     <Modal eyebrow="HOW TO USE" title="使い方" size="guide" onClose={props.onClose}>
       <Guide />
       <h3>
-        <i className="gem" />
-        読み取れる条件
+        <i className="gem" />読み取れる条件
       </h3>
       <ReadConditionsList />
       <h3>
-        <i className="gem" />
-        データについて
+        <i className="gem" />データについて
       </h3>
       <p>対応形式は PNG / JPEG / WebP です。画像の解析と計算はすべてこの端末内で行い、どこにも送信しません。記録はこの端末のブラウザに保存されます。</p>
     </Modal>
@@ -56,7 +54,7 @@ export function HelpModal(props: { onClose: () => void }): JSX.Element {
 }
 
 /** ICM タブの起点。ゲーム選択 → スクショ（または手入力）。 */
-export function IcmInput(props: {
+export function IcmInput(props: Readonly<{
   onScreenshot: (file: File) => void;
   onManual: () => void;
   ocrBusy: boolean;
@@ -65,7 +63,7 @@ export function IcmInput(props: {
   gameSel: GameSel;
   onGameModeChange: (next: GameSel) => void;
   onHelp: () => void;
-}): JSX.Element {
+}>): JSX.Element {
   const fileRef = useRef<HTMLInputElement>(null);
 
   function onPick(e: React.ChangeEvent<HTMLInputElement>): void {
@@ -95,15 +93,13 @@ export function IcmInput(props: {
         onClick={() => fileRef.current?.click()}
       >
         <span>
-          SCREENSHOT
-          <small>{props.ocrBusy ? '読み取り中…' : 'スクリーンショットから読み取る'}</small>
+          SCREENSHOT<small>{props.ocrBusy ? '読み取り中…' : 'スクリーンショットから読み取る'}</small>
         </span>
         {props.ocrBusy ? <Dots /> : <span className="rt">＋</span>}
       </button>
       <button type="button" className="mbtn" disabled={props.blocked || props.ocrBusy} onClick={props.onManual}>
         <span>
-          MANUAL
-          <small>手入力する</small>
+          MANUAL<small>手入力する</small>
         </span>
         <span className="rt">→</span>
       </button>

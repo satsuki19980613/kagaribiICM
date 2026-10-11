@@ -7,14 +7,14 @@ import { TABLE_BB_OPTIONS } from '@kagaribi/ocr';
  * 計算はできる。選んだ後も出したままにして、選び直し・設定の取り消しができる。
  * 表示はゲーム画面左上と同じ「SB/BB」の並び（例 820/1640）。
  */
-export function BlindPick(props: {
+export function BlindPick(props: Readonly<{
   /** 設定中の BB（チップ）。未設定は null。 */
   value: number | null;
   /** null は設定の取り消し。 */
   onPick: (bb: number | null) => void;
   hint?: string;
   skippable?: boolean;
-}): JSX.Element {
+}>): JSX.Element {
   const set = props.value !== null;
   return (
     <div className={`panel bpick${set ? ' set' : ''}`}>

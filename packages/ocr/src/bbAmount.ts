@@ -67,10 +67,12 @@ function rawComponents(bin: Gray): RawComp[] {
     st.length = 0; st.push(i); label[i] = id;
     while (st.length) {
       const p = st.pop()!;
-      const px = p % w, py = (p / w) | 0;
+      const px = p % w, py = Math.trunc(p / w);
       const b = boxes[id]!; b.area++;
-      if (px < b.x0) b.x0 = px; if (px > b.x1) b.x1 = px;
-      if (py < b.y0) b.y0 = py; if (py > b.y1) b.y1 = py;
+      if (px < b.x0) b.x0 = px;
+      if (px > b.x1) b.x1 = px;
+      if (py < b.y0) b.y0 = py;
+      if (py > b.y1) b.y1 = py;
       if (px > 0 && data[p - 1]! > 0 && label[p - 1] === -1) { label[p - 1] = id; st.push(p - 1); }
       if (px < w - 1 && data[p + 1]! > 0 && label[p + 1] === -1) { label[p + 1] = id; st.push(p + 1); }
       if (py > 0 && data[p - w]! > 0 && label[p - w] === -1) { label[p - w] = id; st.push(p - w); }
@@ -143,7 +145,7 @@ function countHoles(mask: Gray, c: Rect): number {
     while (st.length) {
       const p = st.pop()!;
       area++;
-      const px = p % w, py = (p / w) | 0;
+      const px = p % w, py = Math.trunc(p / w);
       for (const q of [px > 0 ? p - 1 : -1, px < w - 1 ? p + 1 : -1, py > 0 ? p - w : -1, py < h - 1 ? p + w : -1]) {
         if (q >= 0 && bg[q] && !seen[q]) { seen[q] = 1; st.push(q); }
       }
@@ -254,7 +256,12 @@ function stripEdgeBands(mask: Gray, bandFrac = 0.5, maxFrac = 0.12): Gray {
   if (h < 8) return mask;
   const thr = bandFrac * w;
   const cap = Math.max(1, Math.floor(h * maxFrac));
-  const rowFill = (y: number): number => { let c = 0; const row = y * w; for (let x = 0; x < w; x++) if (data[row + x]) c++; return c; };
+  const rowFill = (y: number): number => {
+    let c = 0;
+    const row = y * w;
+    for (let x = 0; x < w; x++) if (data[row + x]) c++;
+    return c;
+  };
   let top = 0; while (top < cap && rowFill(top) > thr) top++;
   let bot = 0; while (bot < cap && rowFill(h - 1 - bot) > thr) bot++;
   if (top === 0 && bot === 0) return mask;
@@ -292,15 +299,21 @@ function trimArcBridge(mask: Gray, c: RawComp, N: number): RawComp {
   const clusters: { x0: number; x1: number }[] = [];
   let curStart = -1, lastTrue = -1;
   for (let xi = 0; xi < c.w; xi++) {
-    if (supported[xi]) { if (curStart < 0) curStart = xi; lastTrue = xi; }
-    else if (curStart >= 0 && xi - lastTrue > 2 * R) { clusters.push({ x0: curStart, x1: lastTrue }); curStart = -1; }
+    if (supported[xi]) {
+      if (curStart < 0) curStart = xi;
+      lastTrue = xi;
+    } else if (curStart >= 0 && xi - lastTrue > 2 * R) { clusters.push({ x0: curStart, x1: lastTrue }); curStart = -1; }
   }
   if (curStart >= 0) clusters.push({ x0: curStart, x1: lastTrue });
   if (clusters.length === 0) return c;
   const first = clusters[0]!;
   const nx0 = c.x + first.x0, nx1 = c.x + first.x1 + 1;
   let ny0 = h, ny1 = 0, area = 0;
-  for (let x = nx0; x < nx1; x++) for (let y = y0; y < y1; y++) if (data[y * w + x]) { area++; if (y < ny0) ny0 = y; if (y + 1 > ny1) ny1 = y + 1; }
+  for (let x = nx0; x < nx1; x++) for (let y = y0; y < y1; y++) if (data[y * w + x]) {
+    area++;
+    if (y < ny0) ny0 = y;
+    if (y + 1 > ny1) ny1 = y + 1;
+  }
   if (ny1 <= ny0) return c;
   return { x: nx0, y: ny0, w: nx1 - nx0, h: ny1 - ny0, area };
 }
@@ -367,12 +380,12 @@ export function readAmountBb(
   }
   salvaged.sort((a, b) => a.x - b.x);
   const gValid = salvaged.filter((c) => c.h <= 1.4 * glyphH);
-  if (gValid.length === 0) return { value: NaN, conf: 0 };
+  if (gValid.length === 0) return { value: Number.NaN, conf: 0 };
 
   const maxH2 = Math.max(...gValid.map((c) => c.h));
   const tallCut = 0.45 * maxH2;
   const tall = gValid.filter((c) => c.h >= tallCut);
-  if (tall.length < 3) return { value: NaN, conf: 0 }; // 数字 1 個 ＋ "BB" 未満は読めない
+  if (tall.length < 3) return { value: Number.NaN, conf: 0 }; // 数字 1 個 ＋ "BB" 未満は読めない
 
   // 末尾 "BB" の位置を **letters NCC**（右端の隣接 "B" ペア）で特定する。席の右にある UI 装飾
   // （手番シェブロン ▼ 等）が BB の右に余分な tall 成分を作っても、BB ペア以降を数値スパンから
@@ -384,10 +397,10 @@ export function readAmountBb(
     letters !== undefined && bestMatch(normGlyph(strip, c), [...templates, ...letters]).label === 'B';
   let suffixStart = -1;
   if (letters) for (let i = tall.length - 1; i >= 1; i--) if (isB(tall[i]!) && isB(tall[i - 1]!)) { suffixStart = i - 1; break; }
-  const numTall = suffixStart >= 0 ? tall.slice(0, suffixStart) : tall.slice(0, tall.length - 2);
-  if (numTall.length === 0) return { value: NaN, conf: 0 };
+  const numTall = suffixStart >= 0 ? tall.slice(0, suffixStart) : tall.slice(0, -2);
+  if (numTall.length === 0) return { value: Number.NaN, conf: 0 };
   const firstX = numTall[0]!.x;
-  const lastTall = numTall[numTall.length - 1]!;
+  const lastTall = numTall.at(-1)!;
   const lastX = lastTall.x + lastTall.w;
   const digitBottom = median(numTall.map((c) => c.y + c.h));
 
@@ -425,7 +438,7 @@ export function readAmountBb(
     if (s < minScore) minScore = s;
   }
   const value = parseAmount(text);
-  if (value === null) return { value: NaN, conf: 0 };
+  if (value === null) return { value: Number.NaN, conf: 0 };
   let conf = Math.max(0, Math.min(1, minScore));
   // 刈り込み後もなお左端(x<=2)に幅広 tall 塊が残る＝弧が刈りきれなかった残留ブリッジ。低信頼フラグ
   // して確認画面で強調 → 利用者修正に回す（サイレントな高信頼誤読を防ぐ）。gValid は既に
@@ -511,7 +524,7 @@ export function readAmountBbAnchored(
   // 文字が探索領域の上端か下端で切れている: 領域の縦位置がずれている（名前の高さを小さく見積もった
   // 画像で起きる。評価 2026-10-10: 縮小して再圧縮した画像で「1 BB」「2 BB」の上が切れて未読）。
   // 縦に広げてもう一度読み、読めたほう・一致の良いほうを採る。
-  const wide = { clipped: false, tokenCy: NaN };
+  const wide = { clipped: false, tokenCy: Number.NaN };
   const second = readAnchoredOnce(img, stackRect, templates, opts, letters, nameCx, 1.6, wide);
   // 広げた領域には別の数値（ベットの下にある hero のスタックなど）も入る。読めた数値が、元の領域の
   // 端から矩形の半分以内に無ければ、切れていた文字の読み直しではないので採らない。
@@ -558,7 +571,7 @@ function readAnchoredOnce(
   const narrow = rawAll
     .filter((c) => c.area >= 15 && c.h >= 6 && c.h < 0.9 * mask.h && c.w <= 0.5 * mask.w && c.w / c.h <= 1.6)
     .sort((a, b) => a.x - b.x);
-  if (narrow.length < 3) return { value: NaN, conf: 0 };
+  if (narrow.length < 3) return { value: Number.NaN, conf: 0 };
   const labeled = narrow.map((c) => {
     const g = normGlyph(strip, c);
     const m = bestMatch(g, [...templates, ...lset]);
@@ -630,8 +643,9 @@ function readAnchoredOnce(
   // BB トークン列挙。各トークンの B 高さ gh を尺度に、直左の連続数字塊を集める。
   interface Cand { digitRun: number[]; gh: number; bbX0: number; bbBottom: number; cx: number; broken: boolean; atColon: boolean }
   const cands: Cand[] = [];
+  let consumed = -1; // ここまでの成分は、すでに "BB" の組として使った
   for (let i = 0; i + 1 < labeled.length; i++) {
-    if (!isBbPair(i)) continue;
+    if (i <= consumed || !isBbPair(i)) continue;
     // B と読める成分が 3 つ以上並んでいたら、**右端の 2 つ**が "BB"（表示は必ず「数値 BB」で終わる）。
     // 左側の「B」は、B と取り違えた数字（"8" "0" が多い）。左から組にすると、"98 BB" の "8B" を
     // 接尾辞と見なして 9 と読んでしまう（実測: 縮小した画像で 98→9、2.8→2。信頼度は高いまま）。
@@ -689,17 +703,17 @@ function readAnchoredOnce(
     // 1〔信頼度 0.90〕と読んだ）。
     const broken = fragments.some((x) => x > firstC.x);
     cands.push({ digitRun: run, gh, bbX0: a.c.x, bbBottom, cx: (firstC.x + a.c.x) / 2 + region.x, broken, atColon });
-    i = j; // ペア消費
+    consumed = j; // ペア消費
   }
-  if (cands.length === 0) return { value: NaN, conf: 0 };
+  if (cands.length === 0) return { value: Number.NaN, conf: 0 };
 
   // 選択: 名前中心に最も近い候補。nameCx が無ければ最右（stack は最右, バッジは左）。
   const chosen = nameCx !== undefined
-    ? cands.reduce((best, c) => (Math.abs(c.cx - nameCx) < Math.abs(best.cx - nameCx) ? c : best))
-    : cands.reduce((best, c) => (c.cx > best.cx ? c : best));
+    ? cands.reduce((best, c) => (Math.abs(c.cx - nameCx) < Math.abs(best.cx - nameCx) ? c : best), cands[0]!)
+    : cands.reduce((best, c) => (c.cx > best.cx ? c : best), cands[0]!);
 
   if (nameCx !== undefined && opts.maxAnchorDist !== undefined && Math.abs(chosen.cx - nameCx) > opts.maxAnchorDist) {
-    return { value: NaN, conf: 0 };
+    return { value: Number.NaN, conf: 0 };
   }
   const gh = chosen.gh;
   info.tokenCy = region.y + chosen.bbBottom - gh / 2;
@@ -749,7 +763,7 @@ function readAnchoredOnce(
     numTall.unshift({ x: best.x, y: top, w: gw, h, area: gw * h });
   }
   const firstX = numTall[0]!.x;
-  const lastTall = numTall[numTall.length - 1]!;
+  const lastTall = numTall.at(-1)!;
   const lastX = lastTall.x + lastTall.w;
   const digitBottom = median(numTall.map((c) => c.y + c.h));
 
@@ -819,7 +833,7 @@ function readAnchoredOnce(
     minScore = Math.min(minScore, 0.7);
   }
   // 小数点で始まる数（".8"）は表示に無い。先頭の桁を拾えていないので、読めなかったことにする。
-  if (text.startsWith('.')) return { value: NaN, conf: 0 };
+  if (text.startsWith('.')) return { value: Number.NaN, conf: 0 };
   if (dropped || dotDoubt || chosen.broken) minScore = Math.min(minScore, STRUCT_DOUBT_CONF);
   if (dotInserted) minScore = Math.min(minScore, 0.7);
   // 採った数字のすぐ左に、数字と同じ高さの塊が残っている: 隣り合う桁どうしがつながって 1 つの塊になり
@@ -837,7 +851,7 @@ function readAnchoredOnce(
   );
   if (leftover) minScore = Math.min(minScore, STRUCT_DOUBT_CONF);
   const value = parseAmount(text);
-  if (value === null) return { value: NaN, conf: 0 };
+  if (value === null) return { value: Number.NaN, conf: 0 };
   return { value, conf: Math.max(0, Math.min(1, minScore)) };
 }
 
