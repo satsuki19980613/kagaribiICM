@@ -109,7 +109,8 @@ for (const [i, a] of assetList.entries()) {
   }
 }
 check(scanned > 0, `${scanned} 個の JS/CSS を読んだ`);
-check(unknown.size === 0, `想定外の外部の URL が無い${listed([...unknown].map(([k, v]) => `${k} in ${v}`))}`);
+const unknownList = [...unknown].map(([k, v]) => `${k} in ${v}`);
+check(unknown.size === 0, `想定外の外部の URL が無い${listed(unknownList)}`);
 
 if (process.env.SKIP_OBSERVATORY !== '1') {
   console.log('== 5. Mozilla HTTP Observatory');
