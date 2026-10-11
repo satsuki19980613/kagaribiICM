@@ -207,11 +207,12 @@ const BUTTON_ANCHORS: readonly FracPoint[] = [
 const BB_SCORE_FLOOR = 0.45;
 
 /**
- * ポットの白文字のしきい値。既定（potAnchor の 180）で読めなかったときだけ順に上げる。
+ * ポットの白文字のしきい値。既定（potAnchor の 180）で読めなかったときだけ順に上げ、それでも読めなければ
+ * 下げる（小さく縮めて強く圧縮した画像では、数字の線が暗くなって 180 で欠ける。評価 2026-10-11）。
  * ポットの帯は半透明の暗い地で、背景が明るい卓の画像が明るく保存されていると、地が 180 を越えて
  * 数字とつながる（評価 2026-10-10: ピンクの卓を明るさ 1.2 倍にした画像で、地が 140〜180・数字は 240 以上）。
  */
-const POT_MINCH_SEQ: readonly (number | undefined)[] = [undefined, 215, 235];
+const POT_MINCH_SEQ: readonly (number | undefined)[] = [undefined, 215, 235, 150, 120];
 
 /**
  * whiteMask の minCh を段階的に上げて BB スタックを読む。席プレートの背景明度・ホログラム飾りの

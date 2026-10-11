@@ -7,7 +7,7 @@ import { describe, it, expect } from 'vitest';
 import type { Gray } from './types.js';
 import type { Rgba } from './color.js';
 import type { Template } from './match.js';
-import { readAmountBb, readAmountBbAnchored, stackEndsWithBb, detectDisplayMode } from './bbAmount.js';
+import { readAmountBb, readAmountBbAnchored, robustHoles, stackEndsWithBb, detectDisplayMode } from './bbAmount.js';
 
 /** パターンを 1 セル k×k px に拡大して Gray 化（実画像比率に合わせ数字を大きく）。 */
 function glyph(rows: string[], k = 4): Gray {
@@ -295,6 +295,65 @@ describe('readAmountBbAnchored (two-anchor 名前アンカー)', () => {
     const clean = render([TWO, ZERO, DOT, TWO, BEE, BEE]);
     const ok = readAmountBbAnchored(clean, full(clean), digits, { minCh: 100 }, letters);
     expect(ok.value).toBeCloseTo(20.2, 5);
+  });
+});
+
+describe('readAmountBbAnchored: コロンで数値を打ち切る（ポット用）', () => {
+  /** コロン: 小数点と同じ大きさの点が、縦に 2 つ並ぶ。下の点はベースラインにあって小数点と見分けがつかない。 */
+  const COLON: Gray = (() => {
+    const w = 6, h = 20, data = new Uint8Array(w * h);
+    for (let y = 0; y < h; y++) if (y < 6 || y >= h - 6) data.fill(255, y * w, y * w + w);
+    return { w, h, data };
+  })();
+
+  it('"20 : 2 BB" は、コロンより左（ラベルの文字が数字と読めたもの）を数値に入れない', () => {
+    // 小さい画像では "Pot" の文字が数字と読める（実測: "Pot : 5 BB" → 902.5）。ここでは 2・0 で代用する。
+    const img = render([TWO, ZERO, COLON, TWO, BEE, BEE]);
+    const plain = readAmountBbAnchored(img, full(img), digits, { minCh: 100 }, letters);
+    expect(plain.value).toBeCloseTo(20.2, 5); // 既定では、下の点を小数点と数える
+    const pot = readAmountBbAnchored(img, full(img), digits, { minCh: 100, stopAtColon: true }, letters);
+    expect(pot.value).toBe(2);
+  });
+
+  it('本物の小数点（上に点が無い）では打ち切らない', () => {
+    const img = render([TWO, ZERO, DOT, TWO, BEE, BEE]);
+    const pot = readAmountBbAnchored(img, full(img), digits, { minCh: 100, stopAtColon: true }, letters);
+    expect(pot.value).toBeCloseTo(20.2, 5);
+  });
+});
+
+describe('robustHoles（線の明るさで確かめた穴の数）', () => {
+  const W = 20, H = 24;
+  /** 明るさ `stroke` の線で描いた輪。`bridge` を渡すと、左の辺の一部（開いているはずの部分）をその明るさにする。 */
+  function ring(bridge?: number): { mask: Gray; strip: Gray } {
+    const strip = new Uint8Array(W * H).fill(180); // 地
+    for (let y = 0; y < H; y++)
+      for (let x = 0; x < W; x++) {
+        const edge = x < 4 || x >= W - 4 || y < 4 || y >= H - 4;
+        if (edge) strip[y * W + x] = 250;
+      }
+    if (bridge !== undefined) for (let y = 9; y < 15; y++) for (let x = 0; x < 4; x++) strip[y * W + x] = bridge;
+    // 文字のマスクは固定のしきい値（ここでは 200）で作る。
+    const mask = new Uint8Array(W * H);
+    for (let i = 0; i < W * H; i++) if (strip[i]! >= 200) mask[i] = 255;
+    return { mask: { w: W, h: H, data: mask }, strip: { w: W, h: H, data: strip } };
+  }
+  const box = { x: 0, y: 0, w: W, h: H };
+
+  it('線で囲まれた穴は 1 つと数える', () => {
+    const { mask, strip } = ring();
+    expect(robustHoles(mask, strip, box)).toBe(1);
+  });
+
+  it('にじみで埋まったすき間（線より暗い）で閉じた輪は、当てにしない（null）', () => {
+    // 実測: ぼけた 5 の左下。線 250・埋まった部分 212・地 180。固定のしきい値では穴が 1 つに見える。
+    const { mask, strip } = ring(212);
+    expect(robustHoles(mask, strip, box)).toBeNull();
+  });
+
+  it('はっきり開いていれば 0', () => {
+    const { mask, strip } = ring(180);
+    expect(robustHoles(mask, strip, box)).toBe(0);
   });
 });
 

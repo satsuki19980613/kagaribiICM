@@ -11,6 +11,7 @@
 //   node scripts/ocr-eval/augment.mjs fresh    （さらに別条件。きつい条件を含む）
 //   node scripts/ocr-eval/augment.mjs check    （4 つ目。直したあとの確認用）
 //   node scripts/ocr-eval/augment.mjs blur     （ぼけだけを強めた組）
+//   node scripts/ocr-eval/augment.mjs mix      （6 つ目。小さい画像・引き伸ばし・弱いぼけ・強い再圧縮）
 //   → ocr-local/images/aug__<種類>__<元の名前>.<拡張子> と、truth.json の generated な項目を作り直す
 import { readFileSync, readdirSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -107,7 +108,28 @@ const BLUR = [
   { name: 'up900', kind: '縮小＋ぼけ', ext: 'png', run: async (s) => sharp(await s.resize({ width: 900 }).png().toBuffer()).resize({ width: 2622 }).png() },
   { name: 'up1300', kind: '縮小＋ぼけ', ext: 'png', run: async (s) => sharp(await s.resize({ width: 1300 }).png().toBuffer()).resize({ width: 2622 }).png() },
 ];
-const SETS = { holdout: HOLDOUT, fresh: FRESH, check: CHECK, blur: BLUR };
+// 6 つ目（`... augment.mjs mix`）。小さい画像・引き伸ばし・弱いぼけ・強い再圧縮を混ぜた組。上の 5 組は
+// どれも誤りを直すのに使ったので、直したあとの確認に使う。
+const up = (w) => async (s) => sharp(await s.resize({ width: w }).png().toBuffer()).resize({ width: 2622 }).png();
+const MIX = [
+  { name: 'w1000', kind: '縮小・拡大', ext: 'png', run: (s) => s.resize({ width: 1000 }).png() },
+  { name: 'w950-jpeg45', kind: '縮小＋JPEG', ext: 'jpg', run: (s) => s.resize({ width: 950 }).jpeg({ quality: 45 }) },
+  { name: 'w1250-jpeg40', kind: '縮小＋JPEG', ext: 'jpg', run: (s) => s.resize({ width: 1250 }).jpeg({ quality: 40 }) },
+  { name: 'w1350-webp35', kind: '縮小＋WebP', ext: 'webp', run: (s) => s.resize({ width: 1350 }).webp({ quality: 35 }) },
+  { name: 'up1100', kind: '引き伸ばし', ext: 'png', run: up(1100) },
+  { name: 'up750', kind: '引き伸ばし', ext: 'png', run: up(750) },
+  { name: 'jpeg25', kind: 'JPEG', ext: 'jpg', run: (s) => s.jpeg({ quality: 25 }) },
+  { name: 'webp30', kind: 'WebP', ext: 'webp', run: (s) => s.webp({ quality: 30 }) },
+  { name: 'blur14', kind: 'ぼけ', ext: 'png', run: (s) => s.blur(1.4).png() },
+  { name: 'blur16-jpeg70', kind: 'ぼけ＋JPEG', ext: 'jpg', run: (s) => s.blur(1.6).jpeg({ quality: 70 }) },
+  { name: 'blur22', kind: 'ぼけ', ext: 'png', run: (s) => s.blur(2.2).png() },
+  { name: 'w1500-blur10', kind: '縮小＋ぼけ', ext: 'png', run: (s) => s.resize({ width: 1500 }).blur(1.0).png() },
+  { name: 'w1900-blur13-jpeg65', kind: '縮小＋ぼけ', ext: 'jpg', run: (s) => s.resize({ width: 1900 }).blur(1.3).jpeg({ quality: 65 }) },
+  { name: 'bright110-blur10', kind: 'ぼけ＋色', ext: 'png', run: (s) => s.modulate({ brightness: 1.1 }).blur(1.0).png() },
+  { name: 'sat120-w1300-jpeg55', kind: '組み合わせ', ext: 'jpg', run: (s) => s.resize({ width: 1300 }).modulate({ saturation: 1.2 }).jpeg({ quality: 55 }) },
+  { name: 'bright90-w1150-webp50', kind: '組み合わせ', ext: 'webp', run: (s) => s.resize({ width: 1150 }).modulate({ brightness: 0.9 }).webp({ quality: 50 }) },
+];
+const SETS = { holdout: HOLDOUT, fresh: FRESH, check: CHECK, blur: BLUR, mix: MIX };
 const variants = SETS[process.argv[2]] ?? VARIANTS;
 
 let truth;

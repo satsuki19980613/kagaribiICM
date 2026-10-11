@@ -70,6 +70,6 @@ export function readPotAnchored(
   // 万一 side pot 等が入っても中央に最も近いものを選ぶ）。
   const nameCx = rect.x + rect.w / 2;
   // ポットの数値はピルの中にある。ピルの幅より遠い候補（席の前のベットなど）は採らない。
-  const r = readAmountBbAnchored(img, rect, digits, { minCh: POT_MIN_CH, maxAnchorDist: rect.w, ...opts }, letters, nameCx);
+  const r = readAmountBbAnchored(img, rect, digits, { minCh: POT_MIN_CH, maxAnchorDist: rect.w, stopAtColon: true, ...opts }, letters, nameCx);
   return { value: r.value, conf: r.conf, box: rect };
 }

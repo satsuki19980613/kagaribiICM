@@ -40,6 +40,13 @@ export interface BbAmountOptions extends WhiteMaskOptions {
    * 「いちばん近い候補」として採られる（評価 2026-10-10: ポットが読めず、左上の席の 1 BB をポットとした）。
    */
   readonly maxAnchorDist?: number;
+  /**
+   * 数値の左のコロン（縦に並んだ 2 つの点）で、数値の並びを打ち切る。ポット（"Pot : 5 BB"）用。
+   * 小さい画像では "Pot" の 3 文字が数字と読め、コロンの下の点が小数点と数えられて、ラベルごと数値に
+   * なる（評価 2026-10-11: 幅 950 の JPEG で "Pot : 5 BB" を 902.5 と読んだ）。数値にコロンは入らない。
+   * スタックやベットでは使わない（小数点の上に飾りの欠片が乗ると、コロンと見間違えて桁を落とす）。
+   */
+  readonly stopAtColon?: boolean;
 }
 
 interface RawComp extends Rect {
@@ -111,11 +118,11 @@ function glyphComponents(mask: Gray): RawComp[] {
 /** 数字ごとの「囲まれた穴」の数（このゲームの書体）。 */
 const DIGIT_HOLES: Readonly<Record<string, number>> = { '0': 1, '1': 0, '2': 0, '3': 0, '4': 1, '5': 0, '6': 1, '7': 0, '8': 2, '9': 1 };
 /**
- * 1 位と 2 位の一致の差がこれ未満なら、穴の数で決め直す。
+ * 文字の一致で選んだ数字と、穴の数が合う数字との一致の差がこれ未満なら、穴の数で決め直す。
  *
- * 決め直すのは「成分の穴の数が 1 位の数字と合わず、2 位の数字と合う」ときだけなので、差だけで決まる
- * わけではない。実測（幅 1100 に縮小して JPEG 50 で保存した画像）: 6 を 5〔0.82〕と読み、6 は 0.73 で
- * 差 0.09、成分の穴は 1 つ（＝6）。同じ画像の本物の 5 は、6 との差が 0.17〜0.19 で穴は 0。
+ * 決め直すのは「成分の穴の数が、選んだ数字と合わない」ときだけなので、差だけで決まるわけではない。
+ * 実測（幅 1100 に縮小して JPEG 50 で保存した画像）: 6 を 5〔0.82〕と読み、6 は 0.73 で差 0.09、
+ * 成分の穴は 1 つ（＝6）。同じ画像の本物の 5 は、6 との差が 0.17〜0.19 で穴は 0。
  */
 const HOLE_TIE_GAP = 0.12;
 
@@ -151,15 +158,66 @@ function countHoles(mask: Gray, c: Rect): number {
 }
 
 /**
- * 1 位と 2 位が僅差で、穴の数が違う数字どうしなら、成分の穴の数に合うほうを採る。
+ * 「線の明るさ」で切り直すときの位置（地の明るさを 0、線の明るさを 1 として）。
+ *
+ * 実測（評価 2026-10-11）: にじみで埋まった 5 のすき間は 0.42 より上で開く。本物の 6 の輪は、縮小して
+ * 引き伸ばした画像で 0.70 まで、縮小して再圧縮した画像で 0.75 まで閉じたまま。その間に置く。
+ */
+const STROKE_LEVEL = 0.55;
+
+/**
+ * 成分の外接矩形を、**その文字の線の明るさ**を基準に切り直したマスク（矩形の左上が原点）。
+ *
+ * 文字のマスクは固定のしきい値で作るので、ぼけた画像では、線と線の間の狭いすき間がにじみで埋まり、
+ * 開いているはずの部分が閉じて見える（実測: 5 の左下の開いた部分が埋まり、穴が 1 つ＝6 と同じ形に
+ * なった。埋まった部分の明るさは 212 で、線は 250 前後、地は 180）。線そのものは、にじみより明るい。
+ * 地（マスクの外の画素の中央値）と線（マスクの中の画素の上位 1 割の位置）の間で切り直せば、
+ * にじみで埋まったすき間は開き、本物の線で囲まれた穴は閉じたまま残る。
+ */
+function strokeMask(mask: Gray, strip: Gray, c: Rect): Gray | null {
+  const ink: number[] = [], bg: number[] = [];
+  for (let y = 0; y < c.h; y++)
+    for (let x = 0; x < c.w; x++) {
+      const i = (c.y + y) * mask.w + c.x + x;
+      (mask.data[i] ? ink : bg).push(strip.data[i]!);
+    }
+  if (ink.length === 0 || bg.length === 0) return null;
+  ink.sort((p, q) => p - q);
+  bg.sort((p, q) => p - q);
+  const stroke = ink[Math.floor(0.9 * (ink.length - 1))]!;
+  const base = bg[Math.floor(0.5 * (bg.length - 1))]!;
+  if (stroke <= base) return null;
+  const cut = base + STROKE_LEVEL * (stroke - base);
+  const data = new Uint8Array(c.w * c.h);
+  for (let y = 0; y < c.h; y++)
+    for (let x = 0; x < c.w; x++) {
+      const i = (c.y + y) * mask.w + c.x + x;
+      if (mask.data[i] && strip.data[i]! >= cut) data[y * c.w + x] = 255;
+    }
+  return { w: c.w, h: c.h, data };
+}
+
+/**
+ * 成分の穴の数。文字のマスクと、線の明るさで切り直したマスクの**両方で同じ数**になったときだけ返す
+ * （食い違えば null ＝ 穴の数は当てにならない）。
+ */
+export function robustHoles(mask: Gray, strip: Gray, c: Rect): number | null {
+  const holes = countHoles(mask, c);
+  const strict = strokeMask(mask, strip, c);
+  if (!strict) return holes;
+  return countHoles(strict, { x: 0, y: 0, w: c.w, h: c.h }) === holes ? holes : null;
+}
+
+/**
+ * 文字の一致で選んだ数字と、成分の穴の数が合わないとき、穴の数が合う数字のうち一致のいちばん良い
+ * ものが僅差なら、そちらを採る。
  *
  * 縮小して再圧縮した画像では、6 と 5、8 と 3 のように輪郭の似た数字の一致が僅差になり、取り違える
  * （評価 2026-10-10: 14.6 を 14.5 と読んだ。6〔下に輪がある〕と 5〔輪が無い〕は穴の数で見分けられる）。
- * 一致に差があるときは何もしない。
+ * 僅差の相手は 2 位とは限らない（実測: ぼけた画像の 8 が、6〔0.77〕・3〔0.77〕の順で、8 はその下。
+ * 穴は 2 つで、穴が 2 つの数字は 8 だけ）。一致に差があるときは何もしない。
  *
- * 決め直した桁は、文字の一致と穴の数が食い違ったということなので、呼び側が信頼度を下げる。穴の数も
- * 万能ではない（実測: ぼけた画像の輪郭を立てると、5 の下の開いた部分が閉じて穴が 1 つになり、
- * 5〔0.82〕を 6〔0.75〕に決め直して 95.9 を 96.9 と読んだ）。
+ * 決め直した桁は、文字の一致と穴の数が食い違ったということなので、呼び側が信頼度を下げる。
  */
 function breakTieByHoles(
   mask: Gray,
@@ -171,12 +229,12 @@ function breakTieByHoles(
   const keep = { label: m.label, flipped: false };
   const expected = DIGIT_HOLES[m.label];
   if (expected === undefined) return keep;
-  const others = templates.filter((t) => t.label !== m.label && DIGIT_HOLES[t.label] !== undefined);
-  if (others.length === 0) return keep;
-  const second = bestMatch(normGlyph(strip, comp), others);
-  if (m.score - second.score >= HOLE_TIE_GAP || DIGIT_HOLES[second.label] === expected) return keep;
-  const holes = countHoles(mask, comp);
-  return holes === DIGIT_HOLES[second.label] && holes !== expected ? { label: second.label, flipped: true } : keep;
+  const holes = robustHoles(mask, strip, comp);
+  if (holes === null || holes === expected) return keep;
+  const sameHoles = templates.filter((t) => DIGIT_HOLES[t.label] === holes);
+  if (sameHoles.length === 0) return keep;
+  const alt = bestMatch(normGlyph(strip, comp), sameHoles);
+  return m.score - alt.score < HOLE_TIE_GAP ? { label: alt.label, flipped: true } : keep;
 }
 
 function normGlyph(strip: Gray, r: Rect): Gray {
@@ -382,8 +440,14 @@ export function readAmountBb(
 const BB_TIGHT_GAP = 0.35;
 /** B の右に詰まった成分を 2 つ目の B と認める、B テンプレとの一致の下限。 */
 const B_SECOND_MIN = 0.5;
-/** 数字と読めた成分を 1 つ目の B と認める、B テンプレとの一致の下限。 */
-const B_FIRST_MIN = 0.75;
+/**
+ * 数字と読めた成分を 1 つ目の B と認める、B テンプレとの一致の下限。
+ *
+ * この組は並び方（右隣が B と読めて詰まっている・左は空いている）でほぼ決まるので、一致は低めでよい。
+ * 数値の最後の桁は、単位との間に空白があるので B に詰まらない。実測（幅 950 の JPEG 45）: "0.5 BB" と
+ * "1 BB" の 1 つ目の B が 6・3 と読め、B との一致は 0.63〜0.64 だった。
+ */
+const B_FIRST_MIN = 0.55;
 /** 2 文字とも数字と読めたときに、どちらにも求める B テンプレとの一致の下限。 */
 const B_BOTH_MIN = 0.8;
 /** 1 つ目の B の左の空白が、2 文字の隙間よりこれだけ（文字の高さ比）広いこと。 */
@@ -564,7 +628,7 @@ function readAnchoredOnce(
   };
 
   // BB トークン列挙。各トークンの B 高さ gh を尺度に、直左の連続数字塊を集める。
-  interface Cand { digitRun: number[]; gh: number; bbX0: number; bbBottom: number; cx: number; broken: boolean }
+  interface Cand { digitRun: number[]; gh: number; bbX0: number; bbBottom: number; cx: number; broken: boolean; atColon: boolean }
   const cands: Cand[] = [];
   for (let i = 0; i + 1 < labeled.length; i++) {
     if (!isBbPair(i)) continue;
@@ -578,6 +642,7 @@ function readAnchoredOnce(
     const bbBottom = (a.c.y + a.c.h + b.c.y + b.c.h) / 2;
     const run: number[] = [];
     const fragments: number[] = []; // 数字の行にある、小数点らしくない背の低い成分の x
+    let atColon = false; // 数値の左端がコロンだった（それより左は数値ではない）
     let ref = a.c.x;
     for (let k = i - 1; k >= 0; k--) {
       const g = labeled[k]!;
@@ -587,6 +652,23 @@ function readAnchoredOnce(
       if (g.c.y + g.c.h <= bbBottom - gh || g.c.y >= bbBottom) continue;
       // 背の低い成分（小数点候補・NCC で数字ラベルに化けても桁ではない）はスキップして左へ継続。
       if (g.c.h < 0.6 * gh) {
+        // すぐ上に同じくらいの点が重なっていれば、コロンの下の点。数値はここで終わり。
+        if (
+          opts.stopAtColon &&
+          rawAll.some(
+            (c) =>
+              c !== g.c &&
+              c.h < 0.6 * gh &&
+              c.area >= 0.4 * g.c.area &&
+              c.area <= 2.5 * g.c.area &&
+              Math.abs(c.x + c.w / 2 - (g.c.x + g.c.w / 2)) <= 0.15 * gh &&
+              c.y + c.h <= g.c.y &&
+              c.y >= bbBottom - 1.2 * gh,
+          )
+        ) {
+          atColon = true;
+          break;
+        }
         const dotLike = g.c.h <= 0.45 * gh && g.c.w <= 0.45 * gh && Math.abs(g.c.y + g.c.h - bbBottom) <= 0.3 * gh;
         if (!dotLike) fragments.push(g.c.x);
         ref = g.c.x;
@@ -606,7 +688,7 @@ function readAnchoredOnce(
     // 欠片になって飛ばされた（評価 2026-10-11: ぼけた画像を 215 で読み、"14.6" の 4 と 6 が欠片になって
     // 1〔信頼度 0.90〕と読んだ）。
     const broken = fragments.some((x) => x > firstC.x);
-    cands.push({ digitRun: run, gh, bbX0: a.c.x, bbBottom, cx: (firstC.x + a.c.x) / 2 + region.x, broken });
+    cands.push({ digitRun: run, gh, bbX0: a.c.x, bbBottom, cx: (firstC.x + a.c.x) / 2 + region.x, broken, atColon });
     i = j; // ペア消費
   }
   if (cands.length === 0) return { value: NaN, conf: 0 };
@@ -627,7 +709,8 @@ function readAnchoredOnce(
   const core = new Set<RawComp>(numTall);
   // 先頭桁がアバター発光弧に融合し幅広ブロブ化して narrow から漏れるケース（iOS コーナー
   // "19.2"→"9.2"）: 現行 run の左に、弧刈り込みで数字化できる幅広ブロブがあれば復元して前置。
-  {
+  // コロンで打ち切った数値では行わない（コロンの左はラベルの文字）。
+  if (!chosen.atColon) {
     const leftX = numTall[0]!.x;
     let blob: RawComp | null = null;
     for (const c of rawAll) {
@@ -648,7 +731,8 @@ function readAnchoredOnce(
   // 成分に頼らず、いまの先頭のすぐ左を **数字 1 文字ぶんの窓**で数字テンプレと照合し、はっきり一致
   // したら先頭に足す。窓の幅は B の幅（"1" 以外の数字と同じ）。幅の狭い窓は使わない —— 0 の左の
   // 縦線だけで "1" に 0.93 で一致してしまう（実測）。
-  for (let round = 0; round < 2; round++) {
+  // コロンで打ち切った数値は、左へ拾い直さない（コロンの左はラベルの文字）。
+  for (let round = 0; round < 2 && !chosen.atColon; round++) {
     const first = numTall[0]!;
     const gw = Math.round(labeled.find((l) => l.c.x === chosen.bbX0)?.c.w ?? first.w);
     const top = Math.round(chosen.bbBottom - gh), h = Math.round(gh);
