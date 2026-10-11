@@ -26,9 +26,6 @@
     "vitest": "^4.1.11",
     "wrangler": "^4.148.0"
   },
-  "dependencies": {
-    "zod": "^3.24.1"
-  },
   "engines": {
     "node": ">=20"
   }

@@ -215,7 +215,7 @@ export interface ReconstructResult {
 
 /**
  * RawReads → root BoardState 復元 ＋ 対象外検出。
- * zod 検証は呼び出し側（pipeline / core.parseBoardState）で行う。
+ * 構造検証は呼び出し側（pipeline / core.parseBoardState）で行う。
  */
 export function reconstructSpot(
   reads: RawReads,
@@ -264,7 +264,7 @@ export function reconstructSpot(
     // 占有は検出できたがスタック数字が読めない席（seatPresence のみで occupied）: root 復元に
     // 使える数値が無い。ここで席を落とすと 6-max が 5-max として黙って誤解される（本バグ）。
     // 代わりに 0 を仮置きして席を残し（人数は正しい）、raw.stack.conf(=0) 由来で
-    // lowConfidenceFields に `${pos}.stack` が載る（確認画面で手入力）。zod は finite/nonnegative を
+    // lowConfidenceFields に `${pos}.stack` が載る（確認画面で手入力）。構造検証は finite/nonnegative を
     // 要求するので NaN は渡せない。※solver へは仮値 0 が入るため確認画面での修正が前提（§6.1 プリフィル）。
     const stackFinite = Number.isFinite(screenStack);
     const fullBehind = (stackFinite ? screenStack : 0) + putIn;

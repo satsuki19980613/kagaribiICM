@@ -29,7 +29,7 @@ export type IssueCode =
   | 'checksum_mismatch'
   | 'too_many_players'
   | 'not_club_match'
-  // 「読めなかった」系。zod のスキーマ検証が英語で落とすので、従来は全部 unknown に
+  // 「読めなかった」系。構造検証が英語で落とすので、従来は全部 unknown に
   // 落ちてサーバー側で集計できなかった（実測: 装飾テーマ卓の実機フレーム）。
   | 'hero_hand_unreadable'
   | 'pot_unreadable'
@@ -81,10 +81,10 @@ const RULES: readonly Rule[] = [
     test: (m) =>
       /D ?ボタン/.test(m) || /hero 席は/.test(m) || /hero が生存席/.test(m) || /席数は\s*2\.\.6/.test(m),
   },
-  // pipeline.ts の zod 検証が返す英語メッセージ（BoardState スキーマ）。
+  // pipeline.ts の構造検証が返す英語メッセージ（BoardState スキーマ）。
   // 例: 'heroHand: invalid hand-class notation'（カード検出が 2 枚揃わず空文字）。
   { code: 'hero_hand_unreadable', test: (m) => m.startsWith('heroHand:') || /手札が読めません/.test(m) },
-  // 例: 'pot: Expected number, received nan'（中央ピルの数字が読めず NaN）。
+  // 例: 'pot: expected a number'（中央ピルの数字が読めず NaN）。
   { code: 'pot_unreadable', test: (m) => m.startsWith('pot:') || /ポットが読めません/.test(m) },
 ];
 

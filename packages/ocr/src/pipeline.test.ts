@@ -505,7 +505,7 @@ describe('pipeline — 自分のハンドだけ読めなかった（さつき報
       }),
     );
     expect(r.ok).toBe(false);
-    // zod の英語メッセージ（heroHand: invalid hand-class notation）ではなく、次にすることを伝える。
+    // 構造検証の英語メッセージ（heroHand: invalid hand-class notation）ではなく、次にすることを伝える。
     expect(r.issues.join()).toMatch(/自分のハンドを読み取れませんでした/);
     expect(r.readout.issueCodes).toContain('hero_hand_unreadable');
     expect(r.partialState?.heroPos).toBe('UTG');

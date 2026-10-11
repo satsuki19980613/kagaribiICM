@@ -7,82 +7,108 @@
  * state: live | fold | allin | call | empty（empty は不在・接続切れ。残り人数から除外）
  */
 
-import { z } from 'zod';
-import { GAME_MODES } from './gameMode.js';
-import { POSITIONS, positionsMatchPlayersLeft, isValidPlayersLeft } from './positions.js';
+import { GAME_MODES, type GameMode } from './gameMode.js';
+import { POSITIONS, positionsMatchPlayersLeft, isValidPlayersLeft, type Position } from './positions.js';
 import { isHandClass } from './cards.js';
-import { ACTION_CHARS } from './key.js';
+import { ACTION_CHARS, type ActionChar } from './key.js';
+import { arr, num, obj, oneOf, optional, rec, run, str, type Validator } from './validate.js';
 
 export const SEAT_STATES = ['live', 'fold', 'allin', 'call', 'empty'] as const;
 export type SeatState = (typeof SEAT_STATES)[number];
 
-const unitAmount = z.number().finite().nonnegative();
+/** 読み取りの確かさ（0〜1）。どの項目も省略できる。 */
+export interface SeatConfidence {
+  stack?: number | undefined;
+  bet?: number | undefined;
+  state?: number | undefined;
+}
 
-export const ConfidenceSchema = z
-  .object({
-    stack: z.number().min(0).max(1),
-    bet: z.number().min(0).max(1),
-    state: z.number().min(0).max(1),
-  })
-  .partial()
-  .optional();
+export interface Seat {
+  pos: Position;
+  stack: number;
+  state: SeatState;
+  bet: number;
+  name?: string | undefined;
+  confidence?: SeatConfidence | undefined;
+}
 
-export const SeatSchema = z.object({
-  pos: z.enum(POSITIONS),
-  stack: unitAmount,
-  state: z.enum(SEAT_STATES),
-  bet: unitAmount,
-  name: z.string().optional(),
-  confidence: ConfidenceSchema,
-});
-export type Seat = z.infer<typeof SeatSchema>;
+export interface Ante {
+  scheme: 'all' | 'bb' | 'none';
+  amount: number;
+}
 
-export const AnteSchema = z.object({
-  scheme: z.enum(['all', 'bb', 'none']),
-  amount: unitAmount,
-});
-export type Ante = z.infer<typeof AnteSchema>;
+export interface Blinds {
+  sb: number;
+  bb: number;
+}
 
-export const BlindsSchema = z.object({
-  sb: z.number().finite().positive(),
-  bb: z.number().finite().positive(),
-});
-
-export const BoardStateSchema = z.object({
-  street: z.literal('preflop'),
-  blinds: BlindsSchema,
-  ante: AnteSchema,
-  heroHand: z.string().refine(isHandClass, { message: 'invalid hand-class notation' }),
-  playersLeft: z.number().int(),
-  seats: z.array(SeatSchema).min(2).max(6),
-  heroPos: z.enum(POSITIONS),
-  pot: unitAmount.optional(),
-  heroHandConfidence: z.number().min(0).max(1).optional(),
+export interface BoardState {
+  street: 'preflop';
+  blinds: Blinds;
+  ante: Ante;
+  heroHand: string;
+  playersLeft: number;
+  seats: Seat[];
+  heroPos: Position;
+  pot?: number | undefined;
+  heroHandConfidence?: number | undefined;
   /**
    * どのゲームモードの局面か（プライズ表・開始スタックが決まる）。**省略時はクラブマッチ**。
    * `results.spot` は BoardState をそのまま jsonb で持つので、ここに足すだけで記録にも
    * Worker にも自動で流れる（DB マイグレーション不要）。v3 以前の記録は未指定＝クラブ。
    */
-  gameMode: z.enum(GAME_MODES).optional(),
+  gameMode?: GameMode | undefined;
   /**
    * ミニレイズ・ゲームで解くときのレイズ額（BB 単位の総ベット額, 例 2）。**省略時は AOF**。
    * 最初に参加する人だけがこの額までレイズでき、ほかは全員オールインかフォールドのみ
    * （さつき決定 2026-10-09 の B 案）。レイズした人はオールインを受けたらコールかフォールド。
    */
-  raiseTo: z.number().finite().positive().optional(),
+  raiseTo?: number | undefined;
   /**
    * レイズした人のレイズレンジを「上位 N%」と仮定して解く（N は 1〜100）。**省略時はレンジも
    * ソルバーが決める**（均衡のレンジ。罠だけの狭いレンジになりやすい）。raiseTo があるときだけ意味を持つ。
    */
-  raiseRange: z.number().finite().min(1).max(100).optional(),
+  raiseRange?: number | undefined;
   /**
    * hero の判断までに起きたアクション（席 → 'F' / 'R' / 'P' / 'C'）。hero の決定ノードを
    * 結果画面の見出しに選ぶために使う。hero 自身が 'R' なら「レイズ後にオールインを受けた」判断。
    * 省略時は従来どおり（hero の未開ノード）。
    */
-  line: z.record(z.enum(POSITIONS), z.enum(ACTION_CHARS)).optional(),
+  line?: Partial<Record<Position, ActionChar>> | undefined;
+}
+
+/** BB 単位の額（0 以上の有限の数）。 */
+const unitAmount = num({ finite: true, min: 0 });
+/** 0〜1 の値（確かさ）。 */
+const unitInterval = num({ min: 0, max: 1 });
+const positiveAmount = num({ finite: true, above: 0 });
+
+const seat: Validator<Seat> = obj<Seat>({
+  pos: oneOf(POSITIONS),
+  stack: unitAmount,
+  state: oneOf(SEAT_STATES),
+  bet: unitAmount,
+  name: optional(str()),
+  confidence: optional(
+    obj<SeatConfidence>({ stack: optional(unitInterval), bet: optional(unitInterval), state: optional(unitInterval) }),
+  ),
 });
-export type BoardState = z.infer<typeof BoardStateSchema>;
+
+const boardState: Validator<BoardState> = obj<BoardState>({
+  street: oneOf(['preflop']),
+  blinds: obj<Blinds>({ sb: positiveAmount, bb: positiveAmount }),
+  ante: obj<Ante>({ scheme: oneOf(['all', 'bb', 'none']), amount: unitAmount }),
+  heroHand: str(isHandClass, 'invalid hand-class notation'),
+  playersLeft: num({ int: true }),
+  seats: arr(seat, { min: 2, max: 6 }),
+  heroPos: oneOf(POSITIONS),
+  pot: optional(unitAmount),
+  heroHandConfidence: optional(unitInterval),
+  gameMode: optional(oneOf(GAME_MODES)),
+  raiseTo: optional(positiveAmount),
+  raiseRange: optional(num({ finite: true, min: 1, max: 100 })),
+  line: optional(rec(POSITIONS, oneOf(ACTION_CHARS))),
+});
 
 export interface ValidationResult {
   ok: boolean;
@@ -90,14 +116,11 @@ export interface ValidationResult {
 }
 
 /**
- * zod による構造検証。失敗時は issues にメッセージを詰める。
+ * 構造検証。失敗時は issues に「場所: 内容」の形でメッセージを詰める（例: `pot: expected a number`）。
+ * 通ったときの value は、上で宣言した項目だけを写した新しいオブジェクト。
  */
 export function parseBoardState(input: unknown): ValidationResult & { value?: BoardState } {
-  const r = BoardStateSchema.safeParse(input);
-  if (!r.success) {
-    return { ok: false, issues: r.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`) };
-  }
-  return { ok: true, issues: [], value: r.data };
+  return run(boardState, input);
 }
 
 /**

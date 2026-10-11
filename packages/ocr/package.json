@@ -14,7 +14,6 @@
     "./assets/*": "./assets/*"
   },
   "dependencies": {
-    "@kagaribi/core": "*",
-    "zod": "^3.24.1"
+    "@kagaribi/core": "*"
   }
 }

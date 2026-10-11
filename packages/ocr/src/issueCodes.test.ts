@@ -120,7 +120,7 @@ describe('classifyIssueCodes — 複数メッセージ・重複除去・checksum
     expect(classifyIssueCodes([])).toEqual([]);
   });
 
-  // 「読めなかった」系（zod のスキーマ検証が英語で落とす）。従来は全部 unknown に落ちて
+  // 「読めなかった」系（構造検証が英語で落とす）。従来は全部 unknown に落ちて
   // サーバー側で集計できなかった。実測: 装飾テーマ卓の Pixel フレーム 20260910-192316。
   it('手札が読めなかった失敗を hero_hand_unreadable に分類する', () => {
     expect(classifyIssueCodes(['heroHand: invalid hand-class notation'])).toEqual([
@@ -129,14 +129,14 @@ describe('classifyIssueCodes — 複数メッセージ・重複除去・checksum
   });
 
   it('ポットが読めなかった失敗を pot_unreadable に分類する', () => {
-    expect(classifyIssueCodes(['pot: Expected number, received nan'])).toEqual(['pot_unreadable']);
+    expect(classifyIssueCodes(['pot: expected a number'])).toEqual(['pot_unreadable']);
   });
 
   it('手札とポットが同時に読めない場合は両方のコードが出る', () => {
     expect(
       classifyIssueCodes([
         'heroHand: invalid hand-class notation',
-        'pot: Expected number, received nan',
+        'pot: expected a number',
       ]),
     ).toEqual(['hero_hand_unreadable', 'pot_unreadable']);
   });

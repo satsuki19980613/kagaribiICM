@@ -8,7 +8,7 @@ import {
   gameModeSpec,
   ptDisplayScale,
   totalChipsOf,
-  BoardStateSchema,
+  parseBoardState,
 } from '../src/index.js';
 
 describe('GAME_MODE_SPECS', () => {
@@ -119,11 +119,11 @@ describe('BoardState の gameMode', () => {
   };
 
   it('省略できる（既存データとの互換）', () => {
-    expect(BoardStateSchema.safeParse(base).success).toBe(true);
+    expect(parseBoardState(base).ok).toBe(true);
   });
 
   it('既知のモードだけ通る', () => {
-    expect(BoardStateSchema.safeParse({ ...base, gameMode: 'legend-avg' }).success).toBe(true);
-    expect(BoardStateSchema.safeParse({ ...base, gameMode: 'legend' }).success).toBe(false);
+    expect(parseBoardState({ ...base, gameMode: 'legend-avg' }).ok).toBe(true);
+    expect(parseBoardState({ ...base, gameMode: 'legend' }).ok).toBe(false);
   });
 });

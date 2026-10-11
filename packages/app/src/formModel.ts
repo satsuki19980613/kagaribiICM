@@ -132,7 +132,7 @@ export interface BuildResult {
   potDelta: number | null;
 }
 
-/** フォーム → BoardState 組み立て + zod/意味論/ハンド/ポット検算。 */
+/** フォーム → BoardState 組み立て + 構造検証/意味論/ハンド/ポット検算。 */
 export function buildBoardState(form: BoardForm): BuildResult {
   const issues: string[] = [];
   const sb = num(form.sb);

@@ -3,48 +3,63 @@
  * 数値は EV / equity ともに実払い pt 建て（SPEC §2.2）。
  */
 
-import { z } from 'zod';
-import { POSITIONS } from './positions.js';
+import { POSITIONS, type Position } from './positions.js';
 import { isCanonicalKey } from './key.js';
 import { isHandClass } from './cards.js';
+import { arr, bool, num, obj, oneOf, rec, run, str, type Validator } from './validate.js';
 
 export const ACTION_TYPES = ['PU', 'CA', 'OC'] as const;
 export type ActionType = (typeof ACTION_TYPES)[number];
 
-const freqValue = z.number().min(0).max(1);
-const handClassKey = z.string().refine(isHandClass, { message: 'invalid hand-class key' });
+export interface NodeEquity {
+  pre: number;
+  post: number;
+}
 
-export const NodeEquitySchema = z.object({
-  pre: z.number().finite(),
-  post: z.number().finite(),
-});
+export interface Quality {
+  exploitability: number;
+  converged: boolean;
+  iterations: number;
+}
 
-export const QualitySchema = z.object({
-  exploitability: z.number().finite().nonnegative(),
-  converged: z.boolean(),
-  iterations: z.number().int().nonnegative(),
-});
+export interface SolutionNode {
+  key: string;
+  actor: Position;
+  actionType: ActionType;
+  pct: number;
+  range: string;
+  hands: string[];
+  freq: Record<string, number>;
+  ev: Record<string, number>;
+  equity: Partial<Record<Position, NodeEquity>>;
+  quality: Quality;
+}
 
-export const SolutionNodeSchema = z.object({
-  key: z.string().refine(isCanonicalKey, { message: 'key is not in canonical form' }),
-  actor: z.enum(POSITIONS),
-  actionType: z.enum(ACTION_TYPES),
-  pct: z.number().min(0).max(100),
-  range: z.string(),
-  hands: z.array(handClassKey),
-  freq: z.record(handClassKey, freqValue),
-  ev: z.record(handClassKey, z.number().finite()),
-  equity: z.record(z.enum(POSITIONS), NodeEquitySchema),
-  quality: QualitySchema,
+const HAND_KEY_MESSAGE = 'invalid hand-class key';
+const finite = num({ finite: true });
+/** ハンドの表記 → 値の表。 */
+const byHand = (value: Validator<number>): Validator<Record<string, number>> =>
+  rec<string, number>(isHandClass, value, HAND_KEY_MESSAGE) as Validator<Record<string, number>>;
+
+const solutionNode: Validator<SolutionNode> = obj<SolutionNode>({
+  key: str(isCanonicalKey, 'key is not in canonical form'),
+  actor: oneOf(POSITIONS),
+  actionType: oneOf(ACTION_TYPES),
+  pct: num({ min: 0, max: 100 }),
+  range: str(),
+  hands: arr(str(isHandClass, HAND_KEY_MESSAGE)),
+  freq: byHand(num({ min: 0, max: 1 })),
+  ev: byHand(finite),
+  equity: rec(POSITIONS, obj<NodeEquity>({ pre: finite, post: finite })),
+  quality: obj<Quality>({
+    exploitability: num({ finite: true, min: 0 }),
+    converged: bool(),
+    iterations: num({ int: true, min: 0 }),
+  }),
 });
-export type SolutionNode = z.infer<typeof SolutionNodeSchema>;
 
 export function parseSolutionNode(
   input: unknown,
 ): { ok: boolean; issues: string[]; value?: SolutionNode } {
-  const r = SolutionNodeSchema.safeParse(input);
-  if (!r.success) {
-    return { ok: false, issues: r.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`) };
-  }
-  return { ok: true, issues: [], value: r.data };
+  return run(solutionNode, input);
 }

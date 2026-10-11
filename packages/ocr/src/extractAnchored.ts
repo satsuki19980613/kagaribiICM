@@ -679,7 +679,7 @@ export function extractAnchored(src: Rgba, templates: AnchorTemplates, opts: Anc
       const potOpts = minCh === undefined ? { scoreFloor: 0 } : { scoreFloor: 0, minCh };
       p = readPotAnchored(nimg, digits, letters, potOpts, opts.potRegion);
       // タイト帯で読めない稀なフレーム（実測 143002: ピル数字がにじむ）は広い帯で再挑戦。値がずれても
-      // 有限にして棄却を避ける（下流の zod は pot に finite を要求, 精度は confidence で下げる）。
+      // 有限にして棄却を避ける（下流の構造検証は pot に finite を要求, 精度は confidence で下げる）。
       if (!Number.isFinite(p.value) && !opts.potRegion) {
         p = readPotAnchored(nimg, digits, letters, potOpts, { x: 0.42, y: 0.29, w: 0.17, h: 0.08 });
       }
@@ -862,7 +862,7 @@ export function extractAnchored(src: Rgba, templates: AnchorTemplates, opts: Anc
     }
     let betVal = Number.isFinite(betRead.value) ? betRead.value : 0;
     let betConf = Number.isFinite(betRead.value) ? betRead.conf : 0.4;
-    // allin 席で bet が読めない稀ケース: stack≈0 のまま bet=0 だと rootStack<0 で zod 棄却。
+    // allin 席で bet が読めない稀ケース: stack≈0 のまま bet=0 だと rootStack<0 で構造検証が棄却。
     // bb 下駄（blindOb 上限）で rootStack≥0 を保証（従来の割り切りを allin 復旧フォールバックとして温存）。
     if (action.value === 'allin' && !(betVal > 0) && Number.isFinite(bbNorm)) {
       betVal = bbNorm;

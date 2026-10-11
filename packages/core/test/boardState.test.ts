@@ -59,6 +59,31 @@ describe('boardState schema', () => {
     (bad.seats as any[])[0].confidence = { stack: 1.5 };
     expect(parseBoardState(bad).ok).toBe(false);
   });
+
+  it('読めなかった値（NaN）は、場所つきのメッセージで落とす', () => {
+    const bad = sample() as Record<string, unknown>;
+    bad.pot = Number.NaN;
+    bad.heroHand = '';
+    expect(parseBoardState(bad).issues).toEqual(['heroHand: invalid hand-class notation', 'pot: expected a number']);
+  });
+
+  it('席は 2〜6、アクションの記録は席の名前と決まった文字だけ', () => {
+    const one = sample() as Record<string, unknown>;
+    one.seats = (one.seats as unknown[]).slice(0, 1);
+    expect(parseBoardState(one).ok).toBe(false);
+    expect(parseBoardState({ ...(sample() as object), line: { UTG: 'P', CO: 'F' } }).ok).toBe(true);
+    expect(parseBoardState({ ...(sample() as object), line: { XX: 'P' } }).ok).toBe(false);
+    expect(parseBoardState({ ...(sample() as object), line: { UTG: 'Z' } }).ok).toBe(false);
+  });
+
+  it('宣言に無い項目は捨て、入力とは別のオブジェクトを返す', () => {
+    const raw = { ...(sample() as object), extra: 1 };
+    const r = parseBoardState(raw);
+    expect(r.ok).toBe(true);
+    expect(r.value).not.toBe(raw);
+    expect('extra' in r.value!).toBe(false);
+    expect(r.value!.seats[0]).toEqual({ pos: 'UTG', stack: 18.2, state: 'live', bet: 0, name: 'player1' });
+  });
 });
 
 describe('boardState semantics', () => {

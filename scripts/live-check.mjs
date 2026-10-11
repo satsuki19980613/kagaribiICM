@@ -87,7 +87,8 @@ console.log('== 4. 配っている JS/CSS に想定外の外部の URL が無い
 const KNOWN_STRINGS = new Set(['www.w3.org', 'reactjs.org', 'react.dev', 'bit.ly']);
 const assets = new Set(refs.filter((r) => /\.(js|css)$/.test(r) && !outside.includes(r)));
 const sw = staticFiles[STATIC_FILES.indexOf('sw.js')];
-for (const m of sw.text.matchAll(/url:"([^"]+\.(?:js|css))"/g)) assets.add(m[1]);
+// sw.js の先頭にある「先に配るファイルの一覧」から、JS と CSS を拾う（{"url":"assets/…","revision":…}）。
+for (const m of sw.text.matchAll(/"?url"?:"([^"]+\.(?:js|css))"/g)) assets.add(m[1]);
 let scanned = 0;
 const unknown = new Map();
 const assetList = [...assets];

@@ -2,7 +2,7 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
-import { VitePWA } from 'vite-plugin-pwa';
+import { serviceWorker } from './plugins/swPlugin';
 
 /** public/_headers（Cloudflare が付ける応答ヘッダ）の全ページ共通ぶん。`npm run preview` でも同じ値を付けて、CSP で止まるものを手元で見つける。 */
 function siteHeaders(): Record<string, string> {
@@ -72,55 +72,14 @@ export default defineConfig({
   plugins: [
     ocrEvalDev(),
     react(),
-    VitePWA({
-      // 更新は prompt 方式: 新しい版は待機させ、アプリ側（main.tsx）が入れ替える時機を決める。
-      registerType: 'prompt',
-      injectRegister: false,
-      includeAssets: ['icon.svg', 'apple-touch-icon.png'],
-      manifest: {
-        id: './',
-        name: 'Kagaribi ICM',
-        short_name: 'Kagaribi ICM',
-        description: 'ポーカーチェイスのスクショから push/fold ICM を計算（端末内で完結）',
-        lang: 'ja',
-        theme_color: '#0D0F13',
-        background_color: '#0D0F13',
-        display: 'standalone',
-        orientation: 'any',
-        icons: [
-          { src: 'icon.svg', sizes: 'any', type: 'image/svg+xml' },
-          { src: 'icon-192.png', sizes: '192x192', type: 'image/png' },
-          { src: 'icon-512.png', sizes: '512x512', type: 'image/png' },
-          { src: 'icon-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
-        ],
-      },
-      workbox: {
-        globPatterns: ['**/*.{js,css,html,bin,json,svg,png,webp}'],
-        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
-        cleanupOutdatedCaches: true,
-        clientsClaim: true,
-        // 4人テーブル(~11MB)・3-way 結果テーブル(~21MB)は precache せず、初回使用時にキャッシュする。
-        globIgnores: ['**/pf4way.f16-*.bin', '**/wintie3-169.u16-*.bin'],
-        runtimeCaching: [
-          {
-            urlPattern: /pf4way\.f16-.*\.bin$/,
-            handler: 'CacheFirst',
-            options: { cacheName: 'pf4way-table', expiration: { maxEntries: 2 }, cacheableResponse: { statuses: [0, 200] } },
-          },
-          {
-            urlPattern: /wintie3-169\.u16-.*\.bin$/,
-            handler: 'CacheFirst',
-            options: { cacheName: 'wintie3-table', expiration: { maxEntries: 2 }, cacheableResponse: { statuses: [0, 200] } },
-          },
-          // フォントはこのサイトから配る（src/fonts.css）。日本語は文字の範囲ごとに 100 以上のファイルに
-          // 分かれるので precache せず、使ったものだけ初回にキャッシュする（以後はオフラインでも出る）。
-          {
-            urlPattern: /\.woff2?$/,
-            handler: 'CacheFirst',
-            options: { cacheName: 'fonts', expiration: { maxEntries: 400 }, cacheableResponse: { statuses: [0, 200] } },
-          },
-        ],
-      },
+    // オフライン対応と更新（src/sw.ts）。更新は待機させ、アプリ側（pwaUpdate.ts）が入れ替える時機を決める。
+    serviceWorker({
+      source: fileURLToPath(new URL('./src/sw.ts', import.meta.url)),
+      include: /\.(js|css|html|bin|json|svg|png|webp|webmanifest)$/,
+      // 4人テーブル(~11MB)・3-way 結果テーブル(~21MB)は先に配らず、初回使用時にキャッシュする（sw.ts の RUNTIME）。
+      // フォントも同じ（日本語は文字の範囲ごとに 100 以上のファイルに分かれる。拡張子が include に無い）。
+      exclude: [/pf4way\.f16-.*\.bin$/, /wintie3-169\.u16-.*\.bin$/],
+      maxBytes: 5 * 1024 * 1024,
     }),
   ],
   worker: { format: 'es' },
