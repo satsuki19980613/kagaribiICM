@@ -3,6 +3,7 @@
 [![CI](https://github.com/satsuki19980613/kagaribiICM/actions/workflows/ci.yml/badge.svg)](https://github.com/satsuki19980613/kagaribiICM/actions/workflows/ci.yml)
 [![Live](https://github.com/satsuki19980613/kagaribiICM/actions/workflows/live.yml/badge.svg)](https://github.com/satsuki19980613/kagaribiICM/actions/workflows/live.yml)
 [![CodeQL](https://github.com/satsuki19980613/kagaribiICM/actions/workflows/codeql.yml/badge.svg)](https://github.com/satsuki19980613/kagaribiICM/actions/workflows/codeql.yml)
+[![Secrets](https://github.com/satsuki19980613/kagaribiICM/actions/workflows/secrets.yml/badge.svg)](https://github.com/satsuki19980613/kagaribiICM/actions/workflows/secrets.yml)
 
 ポーカーチェイスのスクリーンショットから、SIT & GO のプリフロップにおける ICM 最適解（オールインかフォールドか）を計算する Web アプリ。ポカチェクラブ「燎」向け。
 
@@ -101,6 +102,7 @@
 | [CI](https://github.com/satsuki19980613/kagaribiICM/actions/workflows/ci.yml) | 型検査・テスト・ビルド | コード変更時 |
 | [Live](https://github.com/satsuki19980613/kagaribiICM/actions/workflows/live.yml) | 本番サイトの疎通。セキュリティヘッダーが付与され、自サイト以外へ通信できない設定であること。配信ファイルに外部の通信先が含まれないこと。Cookie を発行していないこと。Observatory の評価が A+ であること | 毎週・ヘッダーや検証内容の変更時 |
 | [CodeQL](https://github.com/satsuki19980613/kagaribiICM/actions/workflows/codeql.yml) | GitHub CodeQL による静的解析 | コード変更時・毎週 |
+| [Secrets](https://github.com/satsuki19980613/kagaribiICM/actions/workflows/secrets.yml) | gitleaks による秘密情報（API キー・トークン・パスワード・秘密鍵など）の検査。全ブランチの全履歴が対象 | コード変更時・毎週 |
 | [Mozilla HTTP Observatory](https://developer.mozilla.org/en-US/observatory/analyze?host=kagaribiicm.wsk641.workers.dev) | 公開サイトのセキュリティヘッダー。**A+**（125 点、12 項目すべて合格。2026-10-10 測定） | リンク先で随時再測定できる |
 
 このほか、依存パッケージの脆弱性を Dependabot で通知している。
