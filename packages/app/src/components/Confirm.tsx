@@ -34,6 +34,8 @@ export function Confirm(props: {
   modeNote: ModeNote;
   modeMismatch: ChipMismatch;
   stackRecovered: boolean;
+  /** 画像がぼけていて、輪郭を立ててから読んだ（読んだ値はすべて強調されている）。 */
+  blurry: boolean;
   unresolvedStacks: string[];
   blocked: boolean;
   onSolve: () => void;
@@ -82,6 +84,11 @@ export function Confirm(props: {
       {props.unresolvedStacks.length > 0 && (
         <div className="notice warn">
           {props.unresolvedStacks.join('・')} のスタックが読み取れませんでした（<b>0bb</b> を仮に置いています）。「修正」から正しい値を入れてください。
+        </div>
+      )}
+      {fromPhoto && props.blurry && (
+        <div className="notice warn">
+          画像がぼけているため、読み取りの確かさが下がっています。強調された値を、元の画像と見比べてご確認ください。
         </div>
       )}
       {props.stackRecovered && !props.modeMismatch && (

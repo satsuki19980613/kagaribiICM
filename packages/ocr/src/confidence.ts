@@ -70,14 +70,18 @@ export function aggregateConfidence(
   facts: readonly SeatFacts[],
   opts: { threshold?: number; checksumTol?: number } = {},
 ): ConfidenceReport {
-  const threshold = opts.threshold ?? 0.8;
+  // ぼけた画像（輪郭を立ててから読んだ）は、文字の一致が良くても自信のある読みとしては扱わない。
+  // 立てた輪郭は元の文字そのものではなく、似た数字を取り違える（実測: 95.9 を 96.9〔0.80〕）。
+  // 読んだ数値とハンドを、信頼度にかかわらず要確認にする。
+  const threshold = reads.blurry ? Infinity : (opts.threshold ?? 0.8);
+  const stateThreshold = opts.threshold ?? 0.8;
   const low = new Set<string>();
 
   if (reads.heroHand.conf < threshold) low.add('heroHand');
   if (reads.pot.conf < threshold) low.add('pot');
-  if (reads.blinds.sb.conf < threshold) low.add('blinds.sb');
-  if (reads.blinds.bb.conf < threshold) low.add('blinds.bb');
-  if (reads.ante.scheme !== 'none' && reads.ante.amount.conf < threshold) low.add('ante.amount');
+  if (reads.blinds.sb.conf < stateThreshold) low.add('blinds.sb');
+  if (reads.blinds.bb.conf < stateThreshold) low.add('blinds.bb');
+  if (reads.ante.scheme !== 'none' && reads.ante.amount.conf < stateThreshold) low.add('ante.amount');
 
   // 席の項目は Position で keying する（条件確認画面が Position keyed のため）。
   const rawById = new Map(reads.seats.map((s) => [s.id, s]));
@@ -91,7 +95,7 @@ export function aggregateConfidence(
     // 1 BB チップを読み漏らし、正しく 1 で計算しているのに確認画面の「bet 1」が注意色になった）。
     const voluntary = f.action === 'allin' || f.action === 'call' || f.action === 'raise';
     if (voluntary && s.bet.conf < threshold) low.add(`${f.pos}.bet`);
-    if (Math.min(s.occupancy.conf, s.action.conf) < threshold) low.add(`${f.pos}.state`);
+    if (Math.min(s.occupancy.conf, s.action.conf) < stateThreshold) low.add(`${f.pos}.state`);
   }
 
   const checksum = potChecksum(reads, facts, opts.checksumTol);

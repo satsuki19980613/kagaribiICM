@@ -28,6 +28,12 @@ describe('classifyIssueCode — 既存の実メッセージ文字列を期待コ
     ).toBe('not_table_screen');
   });
 
+  it('prefill.ts: 画像がぼけていて読めない（チップ表示・卓ではない、とは別のコード）', () => {
+    expect(classifyIssueCode('画像がぼけていて読み取れませんでした。縮小や加工をしていない、元のスクショを選んでください。')).toBe(
+      'image_blurry',
+    );
+  });
+
   it('spotReconstruction.ts: レイズ（非オールイン）', () => {
     expect(
       classifyIssueCode('SB がレイズ（非オールイン）しています（ミニレイズ/オープン/3bet は push/fold では扱えません）'),

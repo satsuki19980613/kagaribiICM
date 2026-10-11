@@ -67,6 +67,11 @@ export interface OcrPrefillResult {
    */
   readonly unresolvedStacks?: string[];
   /**
+   * 画像がぼけていて、輪郭を立ててから読んだ。読んだ値はすべて確認画面で強調される。
+   * 確認画面では、元の画像と見比べるよう促す。
+   */
+  readonly blurry?: boolean;
+  /**
    * 抽出層の生読み値（総チップ保存チェック**前**）。確認画面でゲームを切り替えたとき、画像処理を
    * やり直さずに `reprefillForGameMode` で pipeline だけ再実行するために持ち帰る。
    */
@@ -94,6 +99,13 @@ export const CHIPS_MODE_ISSUE =
  */
 export const NOT_TABLE_ISSUE =
   'ポーカーチェイスの卓の画面として読み取れませんでした。プリフロップの卓の全体が写った、切り抜いていないスクショを選んでください。';
+
+/**
+ * 画像がぼけていて読めなかったときのメッセージ。ぼけた画像は BB 表示かどうかも見分けられず、
+ * 以前は「チップ表示です」と出ていた（評価 2026-10-11）。
+ */
+export const BLURRY_ISSUE =
+  '画像がぼけていて読み取れませんでした。縮小や加工をしていない、元のスクショを選んでください。';
 
 /** スタック・ポット・自分のハンドのどれも読めていない（＝卓の画面ですらない可能性が高い）。 */
 function nothingReadable(reads: RawReads): boolean {
@@ -131,8 +143,10 @@ export function ocrPrefillFromRgba(
   const imageSize = { w: img.w, h: img.h };
   // 取り込み条件＝BB 表示のみ（SPEC §5.2）。チップ総額表示は早期に棄却して手入力へ誘導する。
   // pipeline を通していないので posById 等は無いが、読めた分（席の生読み取り）は照合ビューに出す。
-  if (reads.displayMode !== 'bb') {
-    const issue = nothingReadable(reads) ? NOT_TABLE_ISSUE : CHIPS_MODE_ISSUE;
+  // ぼけが強すぎる画像は、読めた値があっても取り込まない（桁の欠けた値が混ざる）。ぼけた画像は BB 表示か
+  // どうかも見分けられないことがあるので、そのときも理由は「ぼけ」にする。
+  if (reads.tooBlurry || reads.displayMode !== 'bb') {
+    const issue = reads.tooBlurry || reads.blurry ? BLURRY_ISSUE : nothingReadable(reads) ? NOT_TABLE_ISSUE : CHIPS_MODE_ISSUE;
     const readout = buildReadout(reads, { issues: [issue] });
     return {
       ok: false,
@@ -141,6 +155,7 @@ export function ocrPrefillFromRgba(
       readout,
       issueCodes: readout.issueCodes,
       imageSize,
+      ...(reads.blurry ? { blurry: true } : {}),
     };
   }
   return packagePipeline(reads, gameMode, imageSize);
@@ -161,7 +176,7 @@ export function reprefillForGameMode(
 
 /** 生読み値 → pipeline → プリフィル結果。初回取り込みと切り替え時の再実行が共用する。 */
 function packagePipeline(reads: RawReads, gameMode: GameMode, imageSize?: { w: number; h: number }): OcrPrefillResult {
-  const size = imageSize ? { imageSize } : {};
+  const size = { ...(imageSize ? { imageSize } : {}), ...(reads.blurry ? { blurry: true } : {}) };
   const res = runOcrPipeline(reads, { gameMode });
   if (!res.ok || !res.state) {
     return {

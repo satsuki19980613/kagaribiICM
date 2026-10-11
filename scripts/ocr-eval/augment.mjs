@@ -103,7 +103,9 @@ const BLUR = [
   { name: 'w1600-blur12-jpeg60', kind: '縮小＋ぼけ', ext: 'jpg', run: (s) => s.resize({ width: 1600 }).blur(1.2).jpeg({ quality: 60 }) },
   { name: 'bright75-blur15', kind: 'ぼけ＋色', ext: 'png', run: (s) => s.modulate({ brightness: 0.75 }).blur(1.5).png() },
   { name: 'bright120-blur15', kind: 'ぼけ＋色', ext: 'png', run: (s) => s.modulate({ brightness: 1.2 }).blur(1.5).png() },
-  { name: 'up-blur', kind: '縮小＋ぼけ', ext: 'png', run: (s) => s.resize({ width: 900 }).resize({ width: 2622 }).png() },
+  // 小さく縮めた画像を、元の大きさへ引き伸ばしたもの（resize を 2 回つなぐと後のほうしか効かないので、いったん書き出す）。
+  { name: 'up900', kind: '縮小＋ぼけ', ext: 'png', run: async (s) => sharp(await s.resize({ width: 900 }).png().toBuffer()).resize({ width: 2622 }).png() },
+  { name: 'up1300', kind: '縮小＋ぼけ', ext: 'png', run: async (s) => sharp(await s.resize({ width: 1300 }).png().toBuffer()).resize({ width: 2622 }).png() },
 ];
 const SETS = { holdout: HOLDOUT, fresh: FRESH, check: CHECK, blur: BLUR };
 const variants = SETS[process.argv[2]] ?? VARIANTS;
@@ -131,7 +133,7 @@ for (const base of originals) {
   const stem = base.file.replace(/\.[^.]+$/, '');
   for (const v of variants) {
     const file = `aug__${v.name}__${stem}.${v.ext}`;
-    writeFileSync(join(imgDir, file), await v.run(sharp(input)).toBuffer());
+    writeFileSync(join(imgDir, file), await (await v.run(sharp(input))).toBuffer());
     generated.push({
       ...base,
       file,

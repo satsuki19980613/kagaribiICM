@@ -86,6 +86,20 @@ describe('aggregateConfidence', () => {
     expect(r.lowConfidenceFields).not.toContain('pot');
   });
 
+  it('ぼけた画像から読んだ数値とハンドは、信頼度が高くてもすべて要確認にする', () => {
+    const { reads, facts } = build(2.8, PIXEL);
+    const sharp = aggregateConfidence(reads, facts).lowConfidenceFields;
+    const blurry = aggregateConfidence({ ...reads, blurry: true }, facts).lowConfidenceFields;
+    expect(blurry).toContain('heroHand');
+    expect(blurry).toContain('pot');
+    for (const f of facts) expect(blurry).toContain(`${f.pos}.stack`);
+    // 席の状態（在席・行動マーク）とブラインドは、ぼけていても読みの信頼度どおり。
+    const others = (xs: readonly string[]): string[] => xs.filter((k) => k.endsWith('.state') || k.startsWith('blinds.') || k === 'ante.amount');
+    expect(others(blurry)).toEqual(others(sharp));
+    // マークの無い席のベットは、ぼけていても席順から決まるので要確認にしない。
+    expect(blurry.filter((k) => k.endsWith('.bet'))).toEqual([]);
+  });
+
   it('オールイン額の読みが怪しければ、その席のベットは要確認にする', () => {
     const specs = PIXEL.map((s) => (s.pos === 'UTG' ? { ...s, bet: 12, betConf: 0.4, action: 'allin' as const } : s));
     const { reads, facts } = build(14.8, specs);

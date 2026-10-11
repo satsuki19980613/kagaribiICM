@@ -64,6 +64,7 @@ import type { HandActiveRule } from './frameProfile.js';
 import { isTableConsistentBlinds, resolveBlindChips } from './blindLevels.js';
 import { stretchWhite } from './whiteLevel.js';
 import { sharpenRects } from './sharpen.js';
+import { edgeWidth } from './blurLevel.js';
 
 export interface AnchorTemplates {
   readonly digits: readonly Template[];
@@ -115,6 +116,22 @@ const HERO_CARD_BAND = { x: 0.40, y: 0.62, w: 0.22, h: 0.20 };
 const HEADER_STRIP: Rect = { x: 0.14, y: 0, w: 0.21, h: 0.11 };
 /** 鮮鋭化した画像で読めた数値に付ける信頼度の上限（確認画面で強調される）。 */
 const RESCUE_CONF = 0.7;
+/**
+ * 画像全体を鮮鋭化してから読む、輪郭の幅（正規化画像の画素）の下限。
+ *
+ * 実測（評価 2026-10-11。実物 2 枚の複製）: ぼかしていない画像は 1.3〜1.8（縮小・再圧縮・色の変更を
+ * 含む）、ガウスぼけ σ=1.0 で 2.4、σ=1.5 で 3.3、σ=2.0 で 4.0、σ=3.0 で 6 前後。σ=1.5 までは
+ * そのままでも読めていて、しきい値を 2.6〜3.4 のどこに置いても 4 組の結果は変わらなかった。
+ */
+const BLUR_SHARPEN_WIDTH = 3.0;
+/**
+ * これ以上ぼけた画像は、読めた値があっても取り込まない（輪郭の幅。正規化画像の画素）。
+ * 実測: 5.1〜5.4（σ=2.5）は鮮鋭化すれば全項目を読めた。5.8 以上（σ=3.0）は、表示の種類を見分けられないか、
+ * 取り込めても桁の欠けた値が混ざった（14.6 → 1.5、0.5 → 0）。
+ */
+const BLUR_REJECT_WIDTH = 5.6;
+/** 画像全体を鮮鋭化するときの強さ。強すぎると JPEG のむらを強調して行動マークを読み違える（実測: 6 で発生）。 */
+const BLUR_SHARPEN_AMOUNT = 4;
 
 /** ヘッダの白文字のしきい値。既定（undefined）で読めなければ順に上げる。 */
 const HEADER_MINCH: readonly (number | undefined)[] = [undefined, 190, 215, 235];
@@ -554,12 +571,23 @@ const HERO_CARD_SPLIT = -0.066;
 export function extractAnchored(src: Rgba, templates: AnchorTemplates, opts: AnchorOptions = {}): RawReads {
   const { digits, ranks, letters, actions, marks } = templates;
   // 画像全体が暗く保存されていたら、白が 255 になるように明るさを戻してから読む（whiteLevel.ts）。
-  const img = stretchWhite(src);
+  const bright = stretchWhite(src);
+  // ぼけた画像は、輪郭を立ててから読む（blurLevel.ts・sharpen.ts）。ぼけ具合は、文字の大きさをそろえた
+  // 正規化画像で測る（小さい画像を引き伸ばしたぶんのなだらかさも数える）。強調のぼかし幅は、測った
+  // 輪郭の幅に合わせる（ガウスぼけの輪郭の幅は標準偏差の約 2.5 倍）。
+  const first = normalizeForAnchors(bright);
+  const blur = edgeWidth(first.img);
+  const blurry = blur >= BLUR_SHARPEN_WIDTH;
+  // 取り込まないほどぼけた画像は、輪郭を立てる手間をかけない（読めた分は照合用に返すだけ）。
+  const tooBlurry = blur >= BLUR_REJECT_WIDTH;
+  const img = blurry && !tooBlurry
+    ? sharpenRects(bright, [{ x: 0, y: 0, w: bright.w, h: bright.h }], { sigma: Math.max(0.5, blur / 2.5 / first.scale), amount: BLUR_SHARPEN_AMOUNT })
+    : bright;
   const scoreFloor = opts.scoreFloor ?? BB_SCORE_FLOOR;
 
   // §B2/§B3: 正規化してから席列挙。normalizeForAnchors は決定的なので enumerateSeats が内部で
   // 使う正規化画像と同一（nameBox はこの正規化画像座標）。
-  const { img: nimg } = normalizeForAnchors(img);
+  const { img: nimg } = img === bright ? first : normalizeForAnchors(img);
   const enr = enumerateSeats(img);
   // マーク帯の静的グリッド（アスペクト帯ごとの実測値。未測定帯は undefined で席名アンカーに落ちる）。
   const markGrid = pickMarkGrid(img.w / img.h);
@@ -881,6 +909,10 @@ export function extractAnchored(src: Rgba, templates: AnchorTemplates, opts: Anc
     seats,
     displayMode: mode,
     ...(rb ? { blindChips: { sb: rb.sb, bb: rb.bb, ante: rb.ante, level: rb.level } } : {}),
+    // ぼけた画像から読んだ値は、下流（confidence.ts）がすべて「要確認」にする。信頼度そのものは変えない
+    // （総チップの照合が、どの席の読みを直すかを信頼度の順で決めるため）。
+    ...(blurry ? { blurry: true } : {}),
+    ...(tooBlurry ? { tooBlurry: true } : {}),
   };
   // スタックが読めない席が本物か、空席の見間違い（装飾を人と誤読した幽霊席）かを、アンティと
   // ポットの整合で決める（anteSeatCount.ts）。場のベットを行動マークから決めるので、マークを

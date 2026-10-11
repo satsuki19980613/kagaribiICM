@@ -101,4 +101,12 @@ export interface RawReads {
    * 未設定＝BB 読めず/非クラブマッチ扱いでチェックは無効（＝従来挙動）。
    */
   readonly blindChips?: { readonly sb: number; readonly bb: number; readonly ante: number; readonly level: number };
+  /**
+   * 画像がぼけていて、輪郭を立ててから読んだ（extractAnchored）。読んだ数値とハンドは、信頼度に
+   * かかわらず「要確認」にする（confidence.ts）。読めなかったときの理由の出し分けと、確認画面の
+   * 注意書きにも使う。
+   */
+  readonly blurry?: boolean;
+  /** ぼけが強すぎて、読めた値があっても取り込まない。 */
+  readonly tooBlurry?: boolean;
 }

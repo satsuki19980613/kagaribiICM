@@ -93,6 +93,7 @@ export function App(): JSX.Element {
   const [modeMismatch, setModeMismatch] = useState<ChipMismatch>(null);
   const [modeNote, setModeNote] = useState<ModeNote>(null);
   const [stackRecovered, setStackRecovered] = useState(false);
+  const [blurry, setBlurry] = useState(false);
   const [unresolvedStacks, setUnresolvedStacks] = useState<string[]>([]);
 
   const [records, setRecords] = useState<SpotRecord[]>([]);
@@ -288,6 +289,7 @@ export function App(): JSX.Element {
       setPickedBb(null);
       setModeMismatch(res.chipTotals ?? null);
       setStackRecovered(!!res.stackRecovered);
+      setBlurry(!!res.blurry);
       setUnresolvedStacks(res.unresolvedStacks ?? []);
       setReadout(res.readout);
       setImageSize(res.imageSize);
@@ -604,6 +606,7 @@ export function App(): JSX.Element {
             modeNote={modeNote}
             modeMismatch={modeMismatch}
             stackRecovered={stackRecovered}
+            blurry={blurry}
             unresolvedStacks={unresolvedStacks.filter((p) => state.seats.some((s) => s.pos === p && s.stack === 0))}
             blocked={jobRunning}
             onSolve={() => void solve()}

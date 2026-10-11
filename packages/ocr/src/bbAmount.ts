@@ -156,16 +156,27 @@ function countHoles(mask: Gray, c: Rect): number {
  * 縮小して再圧縮した画像では、6 と 5、8 と 3 のように輪郭の似た数字の一致が僅差になり、取り違える
  * （評価 2026-10-10: 14.6 を 14.5 と読んだ。6〔下に輪がある〕と 5〔輪が無い〕は穴の数で見分けられる）。
  * 一致に差があるときは何もしない。
+ *
+ * 決め直した桁は、文字の一致と穴の数が食い違ったということなので、呼び側が信頼度を下げる。穴の数も
+ * 万能ではない（実測: ぼけた画像の輪郭を立てると、5 の下の開いた部分が閉じて穴が 1 つになり、
+ * 5〔0.82〕を 6〔0.75〕に決め直して 95.9 を 96.9 と読んだ）。
  */
-function breakTieByHoles(mask: Gray, strip: Gray, comp: Rect, templates: readonly Template[], m: { label: string; score: number }): string {
+function breakTieByHoles(
+  mask: Gray,
+  strip: Gray,
+  comp: Rect,
+  templates: readonly Template[],
+  m: { label: string; score: number },
+): { label: string; flipped: boolean } {
+  const keep = { label: m.label, flipped: false };
   const expected = DIGIT_HOLES[m.label];
-  if (expected === undefined) return m.label;
+  if (expected === undefined) return keep;
   const others = templates.filter((t) => t.label !== m.label && DIGIT_HOLES[t.label] !== undefined);
-  if (others.length === 0) return m.label;
+  if (others.length === 0) return keep;
   const second = bestMatch(normGlyph(strip, comp), others);
-  if (m.score - second.score >= HOLE_TIE_GAP || DIGIT_HOLES[second.label] === expected) return m.label;
+  if (m.score - second.score >= HOLE_TIE_GAP || DIGIT_HOLES[second.label] === expected) return keep;
   const holes = countHoles(mask, comp);
-  return holes === DIGIT_HOLES[second.label] && holes !== expected ? second.label : m.label;
+  return holes === DIGIT_HOLES[second.label] && holes !== expected ? { label: second.label, flipped: true } : keep;
 }
 
 function normGlyph(strip: Gray, r: Rect): Gray {
@@ -392,6 +403,8 @@ const DOT_INSERT_PITCH = 1.25;
 const DOT_MISSING_PITCH = 1.7;
 /** 数字の左の「読めていない塊」と見なす隙間の上限（文字の高さ比）。桁どうしの隙間は 0.1〜0.2、小数点をはさんで 0.5 前後。 */
 const LEFTOVER_MAX_GAP = 0.6;
+/** 穴の数で決め直した桁に付ける信頼度の上限（確認画面で強調される）。 */
+const TIE_FLIP_CONF = 0.7;
 /** 領域の端に接した成分を「切れた文字」と見なす、一致の下限。 */
 const CLIPPED_MIN_SCORE = 0.4;
 /** 先頭の数字を拾い直すときの、数字テンプレとの一致の下限（飾り線の誤一致は実測 0.79 まで）。 */
@@ -687,8 +700,9 @@ function readAnchoredOnce(
       if (core.has(it.comp)) dropped = true;
       continue;
     }
-    toks.push({ comp: it.comp, ch: breakTieByHoles(mask, strip, it.comp, templates, m) });
-    const s = matchConfidence(m);
+    const tie = breakTieByHoles(mask, strip, it.comp, templates, m);
+    toks.push({ comp: it.comp, ch: tie.label });
+    const s = tie.flipped ? Math.min(matchConfidence(m), TIE_FLIP_CONF) : matchConfidence(m);
     if (s < minScore) minScore = s;
   }
   // 小数点と、桁どうしの間隔の整合。桁の中心の間隔は、小数点をはさまなければ文字の高さの 0.9〜1.1 倍、
