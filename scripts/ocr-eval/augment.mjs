@@ -10,6 +10,7 @@
 //   node scripts/ocr-eval/augment.mjs holdout  （別条件の組に入れ替える）
 //   node scripts/ocr-eval/augment.mjs fresh    （さらに別条件。きつい条件を含む）
 //   node scripts/ocr-eval/augment.mjs check    （4 つ目。直したあとの確認用）
+//   node scripts/ocr-eval/augment.mjs blur     （ぼけだけを強めた組）
 //   → ocr-local/images/aug__<種類>__<元の名前>.<拡張子> と、truth.json の generated な項目を作り直す
 import { readFileSync, readdirSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -93,7 +94,18 @@ const CHECK = [
   { name: 'w1400-bright85-jpeg55', kind: '組み合わせ', ext: 'jpg', run: (s) => s.resize({ width: 1400 }).modulate({ brightness: 0.85 }).jpeg({ quality: 55 }) },
   { name: 'w1800-sat75-webp60', kind: '組み合わせ', ext: 'webp', run: (s) => s.resize({ width: 1800 }).modulate({ saturation: 0.75 }).webp({ quality: 60 }) },
 ];
-const SETS = { holdout: HOLDOUT, fresh: FRESH, check: CHECK };
+// ぼけだけを強めた組（`... augment.mjs blur`）。ぼけた画像の読み直し（鮮鋭化）が、読めないものを
+// 「自信を持って間違える」に変えていないかを見る。強いものは読めなくて構わない。
+const BLUR = [
+  ...[1.2, 1.8, 2.5, 3.0, 4.0].map((v) => ({ name: `blur${String(v).replace('.', '')}`, kind: 'ぼけ', ext: 'png', run: (s) => s.blur(v).png() })),
+  { name: 'blur20-jpeg50', kind: 'ぼけ＋JPEG', ext: 'jpg', run: (s) => s.blur(2.0).jpeg({ quality: 50 }) },
+  { name: 'w1200-blur15', kind: '縮小＋ぼけ', ext: 'png', run: (s) => s.resize({ width: 1200 }).blur(1.5).png() },
+  { name: 'w1600-blur12-jpeg60', kind: '縮小＋ぼけ', ext: 'jpg', run: (s) => s.resize({ width: 1600 }).blur(1.2).jpeg({ quality: 60 }) },
+  { name: 'bright75-blur15', kind: 'ぼけ＋色', ext: 'png', run: (s) => s.modulate({ brightness: 0.75 }).blur(1.5).png() },
+  { name: 'bright120-blur15', kind: 'ぼけ＋色', ext: 'png', run: (s) => s.modulate({ brightness: 1.2 }).blur(1.5).png() },
+  { name: 'up-blur', kind: '縮小＋ぼけ', ext: 'png', run: (s) => s.resize({ width: 900 }).resize({ width: 2622 }).png() },
+];
+const SETS = { holdout: HOLDOUT, fresh: FRESH, check: CHECK, blur: BLUR };
 const variants = SETS[process.argv[2]] ?? VARIANTS;
 
 let truth;

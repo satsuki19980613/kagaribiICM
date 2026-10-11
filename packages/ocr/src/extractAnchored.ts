@@ -47,7 +47,7 @@ import type { Template } from './match.js';
 import { normalizeForAnchors } from './upscaleNormalize.js';
 import { HERO_HAND_MIN_CONF } from './pipeline.js';
 import { enumerateSeats, SLOT_ANCHORS, SLOTS, type SeatSlot, type Slot } from './seatEnum.js';
-import { readAmountBbAnchored } from './bbAmount.js';
+import { readAmountBbAnchored, STRUCT_DOUBT_CONF } from './bbAmount.js';
 import { recognizeAction } from './actionTag.js';
 import { recognizeMark } from './actionMark.js';
 import { markZoneRect, pickMarkGrid } from './actionMarkZone.js';
@@ -63,6 +63,7 @@ import { recognizeHeroHandColor } from './cards.js';
 import type { HandActiveRule } from './frameProfile.js';
 import { isTableConsistentBlinds, resolveBlindChips } from './blindLevels.js';
 import { stretchWhite } from './whiteLevel.js';
+import { sharpenRects } from './sharpen.js';
 
 export interface AnchorTemplates {
   readonly digits: readonly Template[];
@@ -109,6 +110,11 @@ const HEADER_BLINDS: Rect = { x: 0.172, y: 0.012, w: 0.084, h: 0.044 };
 const HEADER_ANTE: Rect = { x: 0.18, y: 0.058, w: 0.06, h: 0.04 };
 /** hero カード帯（フラクショナル）。2 枚の表向きカードを内包する高さを確保（_dbg2 で全機種一致）。 */
 const HERO_CARD_BAND = { x: 0.40, y: 0.62, w: 0.22, h: 0.20 };
+
+/** ヘッダのブラインドとアンティが収まる帯（横は HEADER_SCAN_DX の探索範囲まで）。鮮鋭化して読み直す範囲。 */
+const HEADER_STRIP: Rect = { x: 0.14, y: 0, w: 0.21, h: 0.11 };
+/** 鮮鋭化した画像で読めた数値に付ける信頼度の上限（確認画面で強調される）。 */
+const RESCUE_CONF = 0.7;
 
 /** ヘッダの白文字のしきい値。既定（undefined）で読めなければ順に上げる。 */
 const HEADER_MINCH: readonly (number | undefined)[] = [undefined, 190, 215, 235];
@@ -606,11 +612,23 @@ export function extractAnchored(src: Rgba, templates: AnchorTemplates, opts: Anc
 
   // ヘッダ SB/BB・アンティ（常に chips 表記）→ bb で BB 正規化。
   // 表と照合できる位置で読む（readHeaderBlinds）。アンティも同じだけずらした位置で読む。
-  const { blinds: blindsRaw, dx: headerDx, minCh: headerMinCh } = readHeaderBlinds(nimg, digits);
+  let header = readHeaderBlinds(nimg, digits);
+  let headerImg = nimg;
+  if (!isTableConsistentBlinds(header.blinds.sb.value, header.blinds.bb.value)) {
+    // どの位置・しきい値でも表と照合できなかった: ぼけた画像かもしれないので、ヘッダの周りを鮮鋭化して
+    // もう一度だけ読む。採るのは表と照合できたときだけ（照合そのものが正しさの確認になる）。
+    const sharp = sharpenRects(nimg, [fracRect(nimg, HEADER_STRIP)]);
+    const again = readHeaderBlinds(sharp, digits);
+    if (isTableConsistentBlinds(again.blinds.sb.value, again.blinds.bb.value)) {
+      header = again;
+      headerImg = sharp;
+    }
+  }
+  const { blinds: blindsRaw, dx: headerDx, minCh: headerMinCh } = header;
   const bbChips = Number.isFinite(blindsRaw.bb.value) && blindsRaw.bb.value > 0 ? blindsRaw.bb.value : 1;
   const bbNorm = norm(blindsRaw.bb, bbChips).value; // BB 換算での BB（=1, allin bet の下駄に使う）。
   const anteChips = recognizeAmount(
-    nimg,
+    headerImg,
     fracRect(nimg, { ...HEADER_ANTE, x: HEADER_ANTE.x + headerDx }),
     digits,
     headerMinCh === undefined ? {} : { minCh: headerMinCh },
@@ -636,6 +654,9 @@ export function extractAnchored(src: Rgba, templates: AnchorTemplates, opts: Anc
       if (!Number.isFinite(p.value) && !opts.potRegion) {
         p = readPotAnchored(nimg, digits, letters, potOpts, { x: 0.42, y: 0.29, w: 0.17, h: 0.08 });
       }
+      // ポットが 0 になることは無い（ブラインドとアンティが必ず入っている）。桁が欠けた読みなので捨てる
+      // （評価 2026-10-11: ぼけた JPEG で、上が欠けた 5 を 0〔信頼度 0.80〕と読んだ）。
+      if (Number.isFinite(p.value) && !(p.value > 0)) p = { value: NaN, conf: 0 };
       if (Number.isFinite(p.value)) break;
     }
     pot = { value: p.value, conf: p.conf };
@@ -738,6 +759,22 @@ export function extractAnchored(src: Rgba, templates: AnchorTemplates, opts: Anc
       const cx = SLOT_ANCHORS[s.slot].x * nimg.w;
       const fb = readStackAnchored(nimg, stackFallbackRect(nimg, s.slot, cx, robustNameH), cx, digits, letters, scoreFloor);
       if (Number.isFinite(fb.value)) stack = fb;
+    }
+    if (mode === 'bb' && !(stack.conf > STRUCT_DOUBT_CONF)) {
+      // どの位置・しきい値でも読めなかった、または桁が欠けている疑いのある読みしか無い: ぼけた画像では、
+      // 数字と "BB" の輪郭がにじんで見分けられない。スタックの周りだけを鮮鋭化して、同じ手順でもう一度
+      // 読む。読めても確認画面で強調する。
+      const cx = s.nameBox?.cx ?? SLOT_ANCHORS[s.slot].x * nimg.w;
+      for (const r of [...(sr ? [sr] : []), stackFallbackRect(nimg, s.slot, cx, robustNameH)]) {
+        // 読み取りが探索に使う範囲（左 1.5 倍・右 0.7 倍・上下 1.6 倍）を覆う。
+        const around: Rect = { x: Math.round(r.x - 1.5 * r.w), y: Math.round(r.y - 1.6 * r.h), w: Math.round(3.2 * r.w), h: Math.round(4.2 * r.h) };
+        const again = readStackAnchored(sharpenRects(nimg, [around]), r, cx, digits, letters, scoreFloor);
+        if (Number.isFinite(again.value)) {
+          const rescued = { value: again.value, conf: Math.min(again.conf, RESCUE_CONF) };
+          stack = Number.isFinite(stack.value) ? betterRead(stack, rescued) : rescued;
+          break;
+        }
+      }
     }
     const stackParsed = Number.isFinite(stack.value);
 

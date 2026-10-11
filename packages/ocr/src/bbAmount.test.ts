@@ -276,6 +276,26 @@ describe('readAmountBbAnchored (two-anchor 名前アンカー)', () => {
     expect(ok.value).toBe(20);
     expect(ok.conf).toBeGreaterThan(0.5);
   });
+
+  it('数値の並びの中に、桁でも小数点でもない欠片があれば、自信のある読みとして扱わない（欠けた桁）', () => {
+    // "2 ? 2 BB": 真ん中の桁が、しきい値が高すぎて上下の欠けた欠片（幅 20・高さ 14）になった場合。
+    // 欠片は背が低いので桁として数えられず、"22" と読める。
+    const FRAG: Gray = { w: 20, h: 14, data: new Uint8Array(20 * 14).fill(255) };
+    const img = render([TWO, FRAG, TWO, BEE, BEE]);
+    // 欠片を行の中ほどへ上げる（render は下端をそろえる。小数点の位置にあると点と数えられる）。
+    const x0 = 3 + TWO.w + 3;
+    for (let y = 0; y < img.h; y++) for (let x = x0; x < x0 + FRAG.w; x++) {
+      const s = (y * img.w + x) * 4, from = ((y + 8) * img.w + x) * 4;
+      const v = y + 8 < img.h ? img.data[from]! : 20;
+      img.data[s] = v; img.data[s + 1] = v; img.data[s + 2] = v;
+    }
+    const r = readAmountBbAnchored(img, full(img), digits, { minCh: 100 }, letters);
+    expect(r.conf).toBeLessThanOrEqual(0.5);
+    // 欠片が無ければ、同じ読みでも信頼度は下げない（"20.2" の小数点は欠片と数えない）。
+    const clean = render([TWO, ZERO, DOT, TWO, BEE, BEE]);
+    const ok = readAmountBbAnchored(clean, full(clean), digits, { minCh: 100 }, letters);
+    expect(ok.value).toBeCloseTo(20.2, 5);
+  });
 });
 
 describe('stackEndsWithBb / detectDisplayMode', () => {

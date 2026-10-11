@@ -378,10 +378,10 @@ const B_BOTH_MIN = 0.8;
 /** 1 つ目の B の左の空白が、2 文字の隙間よりこれだけ（文字の高さ比）広いこと。 */
 const BB_SPACE_MARGIN = 0.25;
 /**
- * 読みの**構造**に疑いがあるとき（数値の並びの中の成分を落とした・数字の左に読めていない塊がある）の
+ * 読みの**構造**に疑いがあるとき（数値の並びの中の成分を落とした・欠片がある・数字の左に読めていない塊がある）の
  * 信頼度の上限。文字の一致が良くても、桁が欠けているかもしれない読みはこれ以下に抑える。
  */
-const STRUCT_DOUBT_CONF = 0.5;
+export const STRUCT_DOUBT_CONF = 0.5;
 /**
  * 隣り合う桁の中心の間隔（文字の高さ比）のしきい値。実測: 小数点なし 0.98〜1.12、あり 1.29〜1.47。
  *  - 小数点があるのに、これ未満: 疑う（値は変えない）。
@@ -551,7 +551,7 @@ function readAnchoredOnce(
   };
 
   // BB トークン列挙。各トークンの B 高さ gh を尺度に、直左の連続数字塊を集める。
-  interface Cand { digitRun: number[]; gh: number; bbX0: number; bbBottom: number; cx: number }
+  interface Cand { digitRun: number[]; gh: number; bbX0: number; bbBottom: number; cx: number; broken: boolean }
   const cands: Cand[] = [];
   for (let i = 0; i + 1 < labeled.length; i++) {
     if (!isBbPair(i)) continue;
@@ -564,6 +564,7 @@ function readAnchoredOnce(
     const gh = (a.c.h + b.c.h) / 2;
     const bbBottom = (a.c.y + a.c.h + b.c.y + b.c.h) / 2;
     const run: number[] = [];
+    const fragments: number[] = []; // 数字の行にある、小数点らしくない背の低い成分の x
     let ref = a.c.x;
     for (let k = i - 1; k >= 0; k--) {
       const g = labeled[k]!;
@@ -572,7 +573,12 @@ function readAnchoredOnce(
       // 打ち切らずに飛ばす（打ち切ると "0.5" の "0" まで届かず "5" と読む。実測: ピンク系の卓の SB ベット）。
       if (g.c.y + g.c.h <= bbBottom - gh || g.c.y >= bbBottom) continue;
       // 背の低い成分（小数点候補・NCC で数字ラベルに化けても桁ではない）はスキップして左へ継続。
-      if (g.c.h < 0.6 * gh) { ref = g.c.x; continue; }
+      if (g.c.h < 0.6 * gh) {
+        const dotLike = g.c.h <= 0.45 * gh && g.c.w <= 0.45 * gh && Math.abs(g.c.y + g.c.h - bbBottom) <= 0.3 * gh;
+        if (!dotLike) fragments.push(g.c.x);
+        ref = g.c.x;
+        continue;
+      }
       // 背の高い非数字で打ち切る。ただし "BB" の直左に続く「B」は、上のとおり B と取り違えた数字
       // なので数値に含める（桁の文字は、あとで数字のテンプレだけで読み直す）。
       if (!isDigit(g.label) && g.label !== 'B') break;
@@ -583,7 +589,11 @@ function readAnchoredOnce(
     }
     if (run.length === 0) continue; // 直左に数字が無い＝バッジ/felt/隣席（判別子）→除外
     const firstC = labeled[run[0]!]!.c;
-    cands.push({ digitRun: run, gh, bbX0: a.c.x, bbBottom, cx: (firstC.x + a.c.x) / 2 + region.x });
+    // 数値の並びの中（先頭の桁より右）に、小数点でも桁でもない欠片がある: しきい値が高すぎて桁が欠け、
+    // 欠片になって飛ばされた（評価 2026-10-11: ぼけた画像を 215 で読み、"14.6" の 4 と 6 が欠片になって
+    // 1〔信頼度 0.90〕と読んだ）。
+    const broken = fragments.some((x) => x > firstC.x);
+    cands.push({ digitRun: run, gh, bbX0: a.c.x, bbBottom, cx: (firstC.x + a.c.x) / 2 + region.x, broken });
     i = j; // ペア消費
   }
   if (cands.length === 0) return { value: NaN, conf: 0 };
@@ -712,7 +722,7 @@ function readAnchoredOnce(
   }
   // 小数点で始まる数（".8"）は表示に無い。先頭の桁を拾えていないので、読めなかったことにする。
   if (text.startsWith('.')) return { value: NaN, conf: 0 };
-  if (dropped || dotDoubt) minScore = Math.min(minScore, STRUCT_DOUBT_CONF);
+  if (dropped || dotDoubt || chosen.broken) minScore = Math.min(minScore, STRUCT_DOUBT_CONF);
   if (dotInserted) minScore = Math.min(minScore, 0.7);
   // 採った数字のすぐ左に、数字と同じ高さの塊が残っている: 隣り合う桁どうしがつながって 1 つの塊になり
   // （ぼけた画像・縮小した画像で起きる）、数字として拾えなかった桁かもしれない。右側の桁だけを読んだ
