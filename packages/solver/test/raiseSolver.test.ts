@@ -65,7 +65,7 @@ describe('solveRaiseGame', () => {
         winTie, winTie3, workers: 0, maxIters: 3000, targetExploitabilityPt: 0, avgPower: 1, refreshSchedule: 'geometric',
       });
       const bm = new Map(b.nodes.map((n) => [n.key, n]));
-      expect(a.nodes.length).toBe(b.nodes.length);
+      expect(a.nodes).toHaveLength(b.nodes.length);
       for (const n of a.nodes) {
         const m = bm.get(n.key)!;
         expect(m).toBeDefined();

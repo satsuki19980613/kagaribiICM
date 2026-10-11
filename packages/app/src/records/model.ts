@@ -14,6 +14,7 @@
 
 import { normalizeKey, type BoardState } from '@kagaribi/core';
 import type { SolveNodeDto, SolveResultDto } from '../solverProtocol';
+import { random01 } from '../random';
 
 /** 押し引きの2択。UI 表記は PU/CA/OC いずれでも "ALL IN"（SPEC §7.4）だが内部は PUSH。 */
 export type HeroAction = 'PUSH' | 'FOLD';
@@ -139,7 +140,7 @@ export interface BuildRecordInput {
 export function buildRecord(input: BuildRecordInput): SpotRecord {
   const { state, result, ms, heroAction } = input;
   const createdAt = input.createdAt ?? Date.now();
-  const id = input.id ?? `spot-${createdAt}-${Math.random().toString(36).slice(2, 7)}`;
+  const id = input.id ?? `spot-${createdAt}-${random01().toString(36).slice(2, 7)}`;
   const head = headlineNode(result);
   const heroEv = head?.heroEv ?? 0;
   const verdict = head ? verdictOf(head) : 'FOLD';
@@ -188,7 +189,7 @@ export interface StartRecordInput {
  */
 export function startRecord(input: StartRecordInput): SpotRecord {
   const createdAt = input.createdAt ?? Date.now();
-  const id = input.id ?? `spot-${createdAt}-${Math.random().toString(36).slice(2, 7)}`;
+  const id = input.id ?? `spot-${createdAt}-${random01().toString(36).slice(2, 7)}`;
   return {
     id,
     createdAt,

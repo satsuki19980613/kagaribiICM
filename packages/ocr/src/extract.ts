@@ -21,7 +21,7 @@ import type { Template } from './match.js';
 import type { FracRect } from './layout.js';
 import { toPx } from './layout.js';
 import type { FrameProfile } from './frameProfile.js';
-import { recognizeAmount } from './numberField.js';
+import { recognizeAmount, grayFromRgba } from './numberField.js';
 import { readAmountBb, readAmountBbAnchored, detectDisplayMode } from './bbAmount.js';
 import { readBlinds } from './blinds.js';
 import { readStreetFromBoard } from './street.js';
@@ -30,9 +30,8 @@ import { isActiveHand } from './cardState.js';
 import { detectSeatPresence, detectYellowName } from './seatPresence.js';
 import { recognizeAction } from './actionTag.js';
 import { findCardRects, largestCardRects } from './detect.js';
-import { grayFromRgba } from './numberField.js';
 import { recognizeHeroHandColor } from './cards.js';
-import { mapProfile, detectContentRect, isFullFrame, type ContentRect } from './contentRect.js';
+import { mapProfile, detectContentRect, type ContentRect } from './contentRect.js';
 import { normalizeToCanonical } from './resize.js';
 
 export interface ExtractTemplates {

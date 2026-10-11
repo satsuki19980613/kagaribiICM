@@ -99,7 +99,7 @@ export function icmEquities(
         if (tieBreak) {
           let best = Number.NEGATIVE_INFINITY;
           for (const m of members) if (tieBreak[m]! > best) best = tieBreak[m]!;
-          top = members.filter((m) => tieBreak[m]! === best);
+          top = members.filter((m) => tieBreak[m] === best);
         }
         const p = 1 / top.length;
         for (const w of top) {

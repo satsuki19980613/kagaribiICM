@@ -12,6 +12,7 @@
  * golden dataset での較正対象。ここでは総額前提の理論値を返し、較正で tol を調整する。
  */
 
+import { compareCodeUnits } from '@kagaribi/core';
 import type { RawReads } from './types.js';
 import type { SeatFacts } from './spotReconstruction.js';
 
@@ -105,5 +106,5 @@ export function aggregateConfidence(
     for (const f of facts) low.add(`${f.pos}.bet`);
   }
 
-  return { lowConfidenceFields: [...low].sort(), checksum };
+  return { lowConfidenceFields: [...low].sort(compareCodeUnits), checksum };
 }

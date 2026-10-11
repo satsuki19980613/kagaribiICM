@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { FRAG, VERT } from './fireShader';
+import { random01 } from '../random';
 
 /**
  * 背景の炎（WebGL フラグメントシェーダ）。
@@ -84,7 +85,7 @@ export function FireBackground(): JSX.Element {
     let lost = false;
     let last = performance.now();
     // 長時間でノイズ座標が大きくなり精度が落ちないよう、時間はゆっくり周回させる。
-    let t = 20 + Math.random() * 100;
+    let t = 20 + random01() * 100;
 
     function resize(): void {
       const w = window.innerWidth;

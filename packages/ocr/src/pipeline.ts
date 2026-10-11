@@ -14,7 +14,7 @@
  */
 
 import type { BoardState, GameMode, Position } from '@kagaribi/core';
-import { checkBoardStateSemantics, gameModeLabel, isHandClass, parseBoardState, totalChipsOf } from '@kagaribi/core';
+import { checkBoardStateSemantics, compareCodeUnits, gameModeLabel, isHandClass, parseBoardState, totalChipsOf } from '@kagaribi/core';
 import type { RawReads } from './types.js';
 import { streetGate } from './gate.js';
 import { reconstructSpot, type SeatFacts } from './spotReconstruction.js';
@@ -245,7 +245,7 @@ export function runOcrPipeline(reads: RawReads, opts: OcrPipelineOptions = {}): 
     ? facts.find((f) => f.id === chipCheck.correctedSeatId)?.pos
     : undefined;
   const low = correctedPos
-    ? [...new Set([...conf.lowConfidenceFields, `${correctedPos}.stack`])].sort()
+    ? [...new Set([...conf.lowConfidenceFields, `${correctedPos}.stack`])].sort(compareCodeUnits)
     : conf.lowConfidenceFields;
 
   // 復元後もスタックが数値にならなかった席（＝仮値 0bb が入った席）。

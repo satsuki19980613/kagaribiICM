@@ -92,7 +92,7 @@ const MIN_TABLE_BB = Math.min(...ALL_CLUB_MATCH_LEVELS.map((l) => l.bb));
  * もっとゆっくり 3300）が出る。そこで候補が複数あるときは**読み取った ante で決める**
  * （ante は BB より小さく誤読しやすいので重みは軽くし、BB 距離を主・ante 距離を従とする）。
  */
-export function snapByBb(bbChips: number, gate = 0.02, anteChips = NaN): BlindLevel | null {
+export function snapByBb(bbChips: number, gate = 0.02, anteChips = Number.NaN): BlindLevel | null {
   if (!Number.isFinite(bbChips) || bbChips <= 0) return null;
   const useAnte = Number.isFinite(anteChips) && anteChips > 0;
   let best: BlindLevel | null = null;
@@ -141,7 +141,7 @@ export function resolveBlindChips(sbChips: number, bbChips: number, anteChips: n
   }
   if (!bbRead && agreed) return exact(agreed);
   const sbRescue = Number.isFinite(sbChips) && sbChips > 0 && sbChips * 2 <= CLUB_MATCH_TOTAL_CHIPS;
-  const bbGuess = bbRead ? bbChips : sbRescue ? sbChips * 2 : NaN;
+  const bbGuess = bbRead ? bbChips : sbRescue ? sbChips * 2 : Number.NaN;
   if (!Number.isFinite(bbGuess)) return null;
 
   const matched = snapByBb(bbGuess, tightGate, anteChips);
@@ -212,7 +212,7 @@ export function blindsUnresolved(reads: RawReads): boolean {
  */
 export function withUserBlinds(reads: RawReads, bbChips: number): RawReads {
   const anteBb = reads.ante.amount.value;
-  const lv = snapByBb(bbChips, 1e-9, Number.isFinite(anteBb) ? anteBb * bbChips : NaN);
+  const lv = snapByBb(bbChips, 1e-9, Number.isFinite(anteBb) ? anteBb * bbChips : Number.NaN);
   if (!lv) return reads;
   return { ...reads, blindChips: { sb: lv.sb, bb: lv.bb, ante: lv.ante, level: lv.level } };
 }

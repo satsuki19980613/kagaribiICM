@@ -18,7 +18,8 @@ jobs:
         with:
           node-version-file: .node-version
           cache: npm
-      - run: npm ci
+      # 依存パッケージのインストール時スクリプトは走らせない（型チェック・テスト・ビルドには要らない）。
+      - run: npm ci --ignore-scripts
       - run: npm run typecheck
       - run: npm test
       - run: npm run build

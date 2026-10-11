@@ -11,7 +11,7 @@ import { Back, PaneHead } from './ui';
  * 計算できない理由の画面。写真経由なら「別の写真を選ぶ」と照合ビュー、ゲーム取り違えの
  * 可能性があるときはゲームを選び直して読み直せる。どの経路でも手入力へ戻れる。
  */
-export function ErrorView(props: {
+export function ErrorView(props: Readonly<{
   issues: string[];
   onBack: () => void;
   onManual: () => void;
@@ -27,7 +27,7 @@ export function ErrorView(props: {
   /** 手動で設定中の BB（チップ）。 */
   pickedBb?: number | null;
   modeNote: ModeNote;
-}): JSX.Element {
+}>): JSX.Element {
   const fromPhoto = !!props.onRetry;
   const canFixGame = !!props.onReread && !!props.gameSel && !!props.onGameModeChange;
   const [showImage, setShowImage] = useState(false);

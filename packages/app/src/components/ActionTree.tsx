@@ -8,7 +8,7 @@ import { RangeGrid } from './HandGrid';
  * Action tree。全ポジションを行動順に並べ、各行の FOLD / PU・CA・OC を切り替えると、
  * 選んでいる行の決定ノードのレンジ表・頻度・記法が連動する。BB のウォークは no decision。
  */
-export function ActionTree(props: { result: SolveResultDto; stacks: Record<string, number> }): JSX.Element {
+export function ActionTree(props: Readonly<{ result: SolveResultDto; stacks: Record<string, number> }>): JSX.Element {
   const { result, stacks } = props;
   const [state, setState] = useState<TreeState>(() => defaultState(result));
   useEffect(() => setState(defaultState(result)), [result]);
@@ -91,13 +91,11 @@ export function ActionTree(props: { result: SolveResultDto; stacks: Record<strin
               {aggrLabel === 'PU' ? 'PUSH' : 'CALL'}
             </span>
             <span>
-              <i style={{ background: 'var(--cell)', boxShadow: 'inset 0 0 0 1px var(--hair-2)' }} />
-              FOLD
+              <i style={{ background: 'var(--cell)', boxShadow: 'inset 0 0 0 1px var(--hair-2)' }} />FOLD
             </span>
             {isHeroRow && (
               <span>
-                <i style={{ boxShadow: 'inset 0 0 0 2px var(--you)' }} />
-                HERO のハンド
+                <i style={{ boxShadow: 'inset 0 0 0 2px var(--you)' }} />HERO のハンド
               </span>
             )}
           </div>

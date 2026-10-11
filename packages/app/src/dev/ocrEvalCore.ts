@@ -7,7 +7,7 @@
  * 進め方と置き場所は scripts/ocr-eval/run.eval.ts の説明を参照。
  */
 
-import type { GameMode, Position } from '@kagaribi/core';
+import { compareCodeUnits, type GameMode, type Position } from '@kagaribi/core';
 import type { RawSeatRead, SeatAction } from '@kagaribi/ocr';
 import type { OcrPrefillResult } from '../ocr/prefill';
 
@@ -71,7 +71,7 @@ const near = (a: number, b: number): boolean => Number.isFinite(a) && Number.isF
 
 /** 1 枚ぶんの突き合わせ。 */
 export function checkFrame(t: TruthFrame, r: OcrPrefillResult, size: { w: number; h: number }): Check[] {
-  const tags = { aspect: (size.w / size.h).toFixed(2), ...(t.tags ?? {}) };
+  const tags = { aspect: (size.w / size.h).toFixed(2), ...t.tags };
   const out: Check[] = [];
   const add = (field: string, truth: string, read: string, ok: boolean, extra: { slot?: Slot; conf?: number } = {}): void => {
     out.push({ file: t.file, tags, field, truth, read, ok, ...extra });
@@ -116,16 +116,16 @@ export function checkFrame(t: TruthFrame, r: OcrPrefillResult, size: { w: number
   for (const slot of SLOTS) {
     const truth = t.seats?.[slot];
     const read = bySlot.get(slot);
-    const readOcc = read && read.occupancy.value === 'occupied' ? '在席' : '空席';
+    const readOcc = read?.occupancy.value === 'occupied' ? '在席' : '空席';
     add('在席', truth ? '在席' : '空席', readOcc, (truth ? '在席' : '空席') === readOcc, { slot, ...(read ? { conf: read.occupancy.conf } : {}) });
     if (!truth) continue;
-    const stack = read ? read.stack.value : NaN;
+    const stack = read ? read.stack.value : Number.NaN;
     add('スタック', num(truth.stack), num(stack), near(stack, truth.stack), { slot, ...(read ? { conf: read.stack.conf } : {}) });
     const action = read ? read.action.value : 'none';
     add('行動マーク', truth.action, action, action === truth.action, { slot, ...(read ? { conf: read.action.conf } : {}) });
     // フォールドした席のチップは読まない設計なので比べない。
     if (truth.action !== 'fold') {
-      const bet = read ? read.bet.value : NaN;
+      const bet = read ? read.bet.value : Number.NaN;
       add('ベット', num(truth.bet), num(bet), near(bet, truth.bet), { slot, ...(read ? { conf: read.bet.conf } : {}) });
     }
   }
@@ -207,7 +207,8 @@ export function report(frames: number, checks: readonly Check[], unlabelled: rea
   if (cands.length === 0) L.push('該当なし（誤りが 2 件以上あり、その項目の全体より 1.5 倍以上の誤り率の組）。');
   else {
     L.push('| 組 | 件数 | 誤り | 誤り率 | その項目の全体 |', '|---|---:|---:|---:|---:|');
-    for (const c of cands.sort((a, b) => b.t.bad - a.t.bad)) {
+    cands.sort((a, b) => b.t.bad - a.t.bad);
+    for (const c of cands) {
       L.push(`| ${c.key} | ${c.t.n} | ${c.t.bad} | ${((c.t.bad / c.t.n) * 100).toFixed(0)}% | ${(c.base * 100).toFixed(0)}% |`);
     }
   }
@@ -215,7 +216,7 @@ export function report(frames: number, checks: readonly Check[], unlabelled: rea
   // 行動マークの取り違え。
   const acts = checks.filter((c) => c.field === '行動マーク');
   if (acts.length) {
-    const labels = [...new Set(acts.flatMap((c) => [c.truth, c.read]))].sort();
+    const labels = [...new Set(acts.flatMap((c) => [c.truth, c.read]))].sort(compareCodeUnits);
     L.push('', '## 行動マークの取り違え（行＝正解、列＝読み取り）', '', `| | ${labels.join(' | ')} |`, `|---|${labels.map(() => '---:').join('|')}|`);
     for (const t of labels) {
       L.push(`| **${t}** | ${labels.map((r) => acts.filter((c) => c.truth === t && c.read === r).length || '').join(' | ')} |`);
@@ -226,7 +227,7 @@ export function report(frames: number, checks: readonly Check[], unlabelled: rea
   const withConf = checks.filter((c) => c.conf !== undefined);
   if (withConf.length) {
     L.push('', '## 信頼度と正誤', '', '| 項目 | 正しい読みの平均 | 誤った読みの平均 | 誤りのうち信頼度 0.8 以上 |', '|---|---:|---:|---:|');
-    for (const field of [...new Set(withConf.map((c) => c.field))]) {
+    for (const field of new Set(withConf.map((c) => c.field))) {
       const xs = withConf.filter((c) => c.field === field);
       const good = xs.filter((c) => c.ok), bad = xs.filter((c) => !c.ok);
       const mean = (a: readonly Check[]): string => (a.length ? (a.reduce((s, c) => s + c.conf!, 0) / a.length).toFixed(2) : '—');

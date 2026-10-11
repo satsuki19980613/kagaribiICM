@@ -18,14 +18,14 @@ import { Modal } from './ui';
 const ACT_LABEL: Record<string, string> = { F: 'FOLD', P: 'ALL IN', C: 'CALL', R: 'RAISE' };
 
 /** 手入力モーダル。妥当なら onSubmit(form) で条件確認へ。写真経由なら元画像と照合しながら直せる。 */
-export function InputForm(props: {
+export function InputForm(props: Readonly<{
   form: BoardForm;
   onFormChange: (f: BoardForm) => void;
   onSubmit: (form: BoardForm) => void;
   imageUrl: string | null;
   readout?: OcrReadout;
   onClose: () => void;
-}): JSX.Element {
+}>): JSX.Element {
   const { form, onFormChange } = props;
   // ハンドが空（写真でハンドだけ読めなかった）なら、最初から表を開いて選んでもらう。
   const [showGrid, setShowGrid] = useState(!props.form.heroHand);
@@ -57,7 +57,7 @@ export function InputForm(props: {
         </button>
       }
     >
-      <label className="lbl">PLAYERS</label>
+      <div className="lbl">PLAYERS</div>
       <div className="seg">
         {[2, 3, 4, 5, 6].map((n) => (
           <button
@@ -101,7 +101,7 @@ export function InputForm(props: {
         </div>
       </div>
 
-      <label className="lbl">STACKS (bb) ・ ポジションを押して HERO を選ぶ</label>
+      <div className="lbl">STACKS (bb) ・ ポジションを押して HERO を選ぶ</div>
       <div className="seats-in">
         {positions.map((pos, i) => {
           const hero = form.heroPos === pos;
@@ -204,7 +204,7 @@ export function InputForm(props: {
         </p>
       )}
 
-      <label className="lbl">HAND</label>
+      <div className="lbl">HAND</div>
       <button type="button" className="handbtn" aria-expanded={showGrid} onClick={() => setShowGrid((s) => !s)}>
         {form.heroHand || 'ハンドを選んでください'}
         <span>{showGrid ? 'CLOSE ▲' : 'SELECT ▼'}</span>

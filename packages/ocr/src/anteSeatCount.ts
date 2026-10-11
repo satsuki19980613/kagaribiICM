@@ -137,7 +137,7 @@ export function resolveStacklessSeats(reads: RawReads): { reads: RawReads; resul
           ...s,
           occupancy: { value: 'empty' as const, conf },
           action: { value: 'none' as const, conf },
-          stack: { value: NaN, conf: 0 },
+          stack: { value: Number.NaN, conf: 0 },
           bet: { value: 0, conf },
         }
       : s,

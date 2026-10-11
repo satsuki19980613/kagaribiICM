@@ -23,7 +23,7 @@ function loadHelp(): boolean {
  * あり得ず「—」。セルの上段＝プッシャーの BF、下段＝コーラーの BF。セルを押すと上の説明が
  * 切り替わる。初期表示は HERO を含む組み合わせのうち、HERO 側の BF がいちばん重いもの。
  */
-export function BubbleFactors(props: { state: BoardState; heroPos: string }): JSX.Element | null {
+export function BubbleFactors(props: Readonly<{ state: BoardState; heroPos: string }>): JSX.Element | null {
   const table = useMemo(() => bubbleFactorTable(props.state), [props.state]);
   const heroIdx = table ? (table.positions as string[]).indexOf(props.heroPos) : -1;
   const initial = useMemo((): [number, number] | null => {

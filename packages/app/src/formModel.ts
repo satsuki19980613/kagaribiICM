@@ -116,7 +116,7 @@ export function reconcilePositions(form: BoardForm): BoardForm {
   const heroPos = positions.includes(form.heroPos) ? form.heroPos : positions[0]!;
   // 人数が変わると席の並びが変わるので、スクショから読んだアクションは捨てる。レイズした人は、
   // 新しい並びでも hero より前にいるときだけ残す。
-  const raiser = form.raiser && positions.indexOf(form.raiser) >= 0 && positions.indexOf(form.raiser) < positions.indexOf(heroPos) ? form.raiser : '';
+  const raiser = form.raiser && positions.includes(form.raiser) && positions.indexOf(form.raiser) < positions.indexOf(heroPos) ? form.raiser : '';
   return { ...form, stacks, heroPos, line: undefined, raiser };
 }
 
@@ -204,7 +204,7 @@ export function buildBoardState(form: BoardForm): BuildResult {
     const hi = positions.indexOf(form.heroPos);
     const before = positions.slice(0, hi);
     const ok = Object.entries(form.line).every(([p, a]) => before.includes(p as Position) && (a === 'F' || a === 'P' || a === 'C'));
-    if (ok && Object.values(form.line).some((a) => a === 'P')) raiseFields = { line: form.line };
+    if (ok && Object.values(form.line).includes('P')) raiseFields = { line: form.line };
   }
 
   const parsed = parseBoardState({ ...candidate, ...raiseFields });

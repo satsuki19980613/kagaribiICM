@@ -276,7 +276,7 @@ function readStackAnchored(
     best = best ? betterRead(best, r) : r;
     if (!MAIN_MINCH.has(minCh)) break;
   }
-  return best ?? { value: NaN, conf: 0 };
+  return best ?? { value: Number.NaN, conf: 0 };
 }
 
 /**
@@ -674,7 +674,7 @@ export function extractAnchored(src: Rgba, templates: AnchorTemplates, opts: Anc
   // pot（§B5）: BB 表示は中央ピルを BB アンカーで、chips は中央矩形の生読み→正規化。
   let pot: Read<number>;
   if (mode === 'bb') {
-    let p: Read<number> = { value: NaN, conf: 0 };
+    let p: Read<number> = { value: Number.NaN, conf: 0 };
     for (const minCh of POT_MINCH_SEQ) {
       const potOpts = minCh === undefined ? { scoreFloor: 0 } : { scoreFloor: 0, minCh };
       p = readPotAnchored(nimg, digits, letters, potOpts, opts.potRegion);
@@ -685,7 +685,7 @@ export function extractAnchored(src: Rgba, templates: AnchorTemplates, opts: Anc
       }
       // ポットが 0 になることは無い（ブラインドとアンティが必ず入っている）。桁が欠けた読みなので捨てる
       // （評価 2026-10-11: ぼけた JPEG で、上が欠けた 5 を 0〔信頼度 0.80〕と読んだ）。
-      if (Number.isFinite(p.value) && !(p.value > 0)) p = { value: NaN, conf: 0 };
+      if (Number.isFinite(p.value) && !(p.value > 0)) p = { value: Number.NaN, conf: 0 };
       if (Number.isFinite(p.value)) break;
     }
     pot = { value: p.value, conf: p.conf };
@@ -755,13 +755,13 @@ export function extractAnchored(src: Rgba, templates: AnchorTemplates, opts: Anc
         isButton: false,
         occupancy: { value: 'empty' as Occupancy, conf: 0.8 },
         action: { value: 'none' as SeatAction, conf: 0.8 },
-        stack: { value: NaN, conf: 0 },
+        stack: { value: Number.NaN, conf: 0 },
         bet: { value: 0, conf: 0.6 },
       };
     }
 
     // stack（名前直上 BB アンカー）。
-    let stack: Read<number> = { value: NaN, conf: 0 };
+    let stack: Read<number> = { value: Number.NaN, conf: 0 };
     const sr = stackRectOf(s);
     if (sr && s.nameBox) {
       if (mode === 'bb') {
@@ -856,7 +856,7 @@ export function extractAnchored(src: Rgba, templates: AnchorTemplates, opts: Anc
     // −0.5/−1.0 ずれ、allin は root 潰れ）。チップ無し席は NaN → bet=0（幻レイズ棄却を避ける, §B8）。
     // 折れ済み席は投函チップが場に無い前提（未オープン局面）なので読まない＝bet 0（＝下流で dead blind
     // のみ putIn）。hero も SB/BB になりうるので読む。
-    let betRead: Read<number> = { value: NaN, conf: 0 };
+    let betRead: Read<number> = { value: Number.NaN, conf: 0 };
     if (s.nameBox && action.value !== 'fold') {
       betRead = readBetAnchored(nimg, s.slot, s.nameBox, digits, letters, scoreFloor, robustNameH);
     }

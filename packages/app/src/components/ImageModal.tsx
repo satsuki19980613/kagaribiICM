@@ -7,7 +7,7 @@ import { Modal } from './ui';
  * 元画像 × OCR 結果の照合。画像タップで全体表示／原寸を切り替える。readout があれば
  * 席ごとの読み取り値（ポジション・hero/D・スタック・bet）と読めなかった理由を下に出す。
  */
-export function ImageModal(props: { src: string; readout?: OcrReadout; onClose: () => void }): JSX.Element {
+export function ImageModal(props: Readonly<{ src: string; readout?: OcrReadout; onClose: () => void }>): JSX.Element {
   const [zoom, setZoom] = useState(false);
   const view = props.readout ? buildOcrReadoutView(props.readout) : null;
   // 表示するのは、読み込んだスクショから作ったブラウザ内の画像（blob:）だけ。
@@ -15,15 +15,22 @@ export function ImageModal(props: { src: string; readout?: OcrReadout; onClose: 
 
   return (
     <Modal eyebrow="IMAGE" title={view ? '元画像と読み取り結果' : '元画像'} size="wide" onClose={props.onClose}>
-      <div className={`imgv${zoom ? ' zoom' : ''}`} onClick={() => setZoom((z) => !z)}>
-        {src && <img src={src} alt="読み取り元のスクリーンショット" />}
+      <div className={`imgv${zoom ? ' zoom' : ''}`}>
+        {src && (
+          <button
+            type="button"
+            aria-label={zoom ? 'スクリーンショットを全体表示に戻す' : 'スクリーンショットを原寸で表示する'}
+            onClick={() => setZoom((z) => !z)}
+          >
+            <img src={src} alt="読み取り元のスクリーンショット" />
+          </button>
+        )}
       </div>
 
       {view && (
         <>
           <h3>
-            <i className="gem" />
-            SEATS
+            <i className="gem" />SEATS
           </h3>
           <ul className="seats">
             {view.seats.map((s) => (
@@ -42,8 +49,7 @@ export function ImageModal(props: { src: string; readout?: OcrReadout; onClose: 
           {view.issues.length > 0 && (
             <>
               <h3>
-                <i className="gem c" />
-                読み取れなかった理由
+                <i className="gem c" />読み取れなかった理由
               </h3>
               <ul className="check">
                 {view.issues.map((m) => (

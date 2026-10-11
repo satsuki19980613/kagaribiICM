@@ -41,7 +41,7 @@ describe('sharpenRects', () => {
   it('画像からはみ出す矩形は、画像の中の部分だけ扱う', () => {
     const src = softEdge();
     const out = sharpenRects(src, [{ x: -20, y: -20, w: 60, h: 40 }, { x: 500, y: 500, w: 10, h: 10 }]);
-    expect(out.data.length).toBe(src.data.length);
+    expect(out.data).toHaveLength(src.data.length);
     expect(at(out, 33, 10)).toBeLessThan(at(src, 33, 10));
     expect(at(out, 47, 10)).toBe(at(src, 47, 10)); // x=40 より右は矩形の外
   });

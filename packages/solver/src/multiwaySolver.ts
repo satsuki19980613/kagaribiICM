@@ -326,7 +326,6 @@ export function solveThreeWay(state: BoardState, opts: MultiwaySolveOptions = {}
   eng.refresh(st, 0);
   let iterations = 0;
   let exploitabilityPt = Number.POSITIVE_INFINITY;
-  let converged = false;
 
   for (let t = 1; t <= maxIters; t++) {
     iterations = t;
@@ -343,10 +342,7 @@ export function solveThreeWay(state: BoardState, opts: MultiwaySolveOptions = {}
     }
     if (t % refreshEvery === 0 || t === maxIters) {
       exploitabilityPt = eng.exploitability(st, eng.computeEVs(st));
-      if (exploitabilityPt <= targetExpl) {
-        converged = true;
-        break;
-      }
+      if (exploitabilityPt <= targetExpl) break;
     }
   }
 
@@ -354,7 +350,7 @@ export function solveThreeWay(state: BoardState, opts: MultiwaySolveOptions = {}
   eng.refresh(st, 0x7fffffff);
   const finalEv = eng.computeEVs(st);
   exploitabilityPt = eng.exploitability(st, finalEv);
-  converged = exploitabilityPt <= targetExpl;
+  const converged = exploitabilityPt <= targetExpl;
 
   const eqPre = icmEquities(eng.T, eng.payouts);
   const post = eng.eqPost(finalEv);

@@ -16,7 +16,9 @@ export type ChipMismatch = { read: number; theory: number } | null;
  * 条件確認。読み取った内容を項目別に出し、低信頼の値には CHECK を付ける。写真経由なら
  * 検出人数をその場で直せ、ゲームを選び直して読み直せる。
  */
-export function Confirm(props: {
+const Chk = (): JSX.Element => <span className="chk">CHECK</span>;
+
+export function Confirm(props: Readonly<{
   state: BoardState;
   lowConfidenceFields: string[];
   imageUrl: string | null;
@@ -41,7 +43,7 @@ export function Confirm(props: {
   onSolve: () => void;
   /** レイズした人のレンジの仮定を選び直す（null=ソルバーが決める）。レイズの入った局面だけ渡す。 */
   onRaiseRange?: (pct: number | null) => void;
-}): JSX.Element {
+}>): JSX.Element {
   const { state } = props;
   const [showImage, setShowImage] = useState(false);
   const [showInfo, setShowInfo] = useState(false);
@@ -51,7 +53,6 @@ export function Confirm(props: {
   const fromPhoto = !!props.imageUrl;
   // hero の判断までのアクション（前の人のオールイン・レイズ）。フォールドだけなら 'なし'。
   const actionText = state.line ? lineText(positionsForPlayersLeft(state.playersLeft), state.line) : 'なし';
-  const Chk = (): JSX.Element => <span className="chk">CHECK</span>;
 
   return (
     <div className="pane">
@@ -173,11 +174,13 @@ export function Confirm(props: {
       <ul className="seats">
         {state.seats.map((s) => {
           const hero = s.pos === state.heroPos;
+          const stackLow = low.has(`${s.pos}.stack`);
+          const betLow = low.has(`${s.pos}.bet`);
           return (
             <li key={s.pos} className={`seat${hero ? ' hero' : ''}`}>
               <span className={`pos${hero ? ' hero' : ''}`}>{s.pos}</span>
-              <span className={`stk${low.has(`${s.pos}.stack`) ? ' lowconf' : ''}`}>{formatBbDisplay(s.stack)}bb</span>
-              <span className={`bet${low.has(`${s.pos}.bet`) ? ' lowconf' : ''}`}>{s.bet > 0 ? `BET ${formatBbDisplay(s.bet)}` : ''}</span>
+              <span className={`stk${stackLow ? ' lowconf' : ''}`}>{formatBbDisplay(s.stack)}bb</span>
+              <span className={`bet${betLow ? ' lowconf' : ''}`}>{s.bet > 0 ? `BET ${formatBbDisplay(s.bet)}` : ''}</span>
               <span className="tgs">{hero && <span className="tg">HERO</span>}</span>
             </li>
           );

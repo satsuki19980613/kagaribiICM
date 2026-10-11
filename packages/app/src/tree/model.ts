@@ -97,7 +97,7 @@ export function secondRowFor(actions: ActionChar[]): number {
 /** 席 active の決定ノードのキー（上流の P/C/F/R を埋め、actor と下流は '-'）。2 回目の行は全席が埋まる。 */
 export function keyForActive(order: string[], actions: ActionChar[], active: number): string {
   const map: Partial<Record<string, ActionChar>> = {};
-  const upTo = active >= order.length ? order.length : active;
+  const upTo = Math.min(active, order.length);
   for (let k = 0; k < upTo; k++) map[order[k]!] = actions[k]!;
   return normalizeKey(order.length, map);
 }

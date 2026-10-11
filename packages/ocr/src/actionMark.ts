@@ -187,7 +187,7 @@ function plateSpanFromMask(mask: Gray, plateW: number, opts: ActionMarkOptions):
   // 2. 縦に連続する行を固まりにまとめる（枠線は数 px の厚みを持つ）。
   const groups: { y0: number; y1: number; xs: number; xe: number }[] = [];
   for (const r of rows) {
-    const last = groups[groups.length - 1];
+    const last = groups.at(-1);
     if (last && r.y - last.y1 <= 2) {
       last.y1 = r.y;
       last.xs = Math.min(last.xs, r.start);
